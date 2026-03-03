@@ -1,0 +1,218 @@
+---
+title: User statistics
+description: Get dashboard statistics and analytics
+---
+
+## GET /api/history/stats
+
+Get comprehensive statistics for the current user's dashboard, including job counts, document metrics, and recent activity.
+
+### Authentication
+
+Requires valid JWT access token in Authorization header.
+
+### Response
+
+<ResponseField name="total_jobs" type="integer">
+  Total number of jobs created by the user
+</ResponseField>
+
+<ResponseField name="total_documents" type="integer">
+  Total number of documents across all jobs
+</ResponseField>
+
+<ResponseField name="documents_processed" type="integer">
+  Number of successfully processed documents
+</ResponseField>
+
+<ResponseField name="documents_failed" type="integer">
+  Number of failed documents
+</ResponseField>
+
+<ResponseField name="jobs_by_status" type="object">
+  Count of jobs grouped by status
+  <Expandable title="example">
+    ```json
+    {
+      "completed": 15,
+      "processing": 2,
+      "failed": 1,
+      "cancelled": 0
+    }
+    ```
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="recent_activity" type="array">
+  Last 5 jobs (most recent first)
+  <Expandable title="JobSummary properties">
+    <ResponseField name="id" type="uuid">
+      Job identifier
+    </ResponseField>
+    <ResponseField name="job_type" type="string">
+      Type of job: `single`, `batch`, `webhook`
+    </ResponseField>
+    <ResponseField name="status" type="string">
+      Current status
+    </ResponseField>
+    <ResponseField name="total_documents" type="integer">
+      Total documents in job
+    </ResponseField>
+    <ResponseField name="processed_count" type="integer">
+      Successfully processed documents
+    </ResponseField>
+    <ResponseField name="failed_count" type="integer">
+      Failed documents
+    </ResponseField>
+    <ResponseField name="started_at" type="datetime">
+      When processing started
+    </ResponseField>
+    <ResponseField name="completed_at" type="datetime">
+      When processing completed
+    </ResponseField>
+    <ResponseField name="created_at" type="datetime">
+      When job was created
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X GET 'http://localhost:8000/api/history/stats' \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "total_jobs": 18,
+  "total_documents": 453,
+  "documents_processed": 447,
+  "documents_failed": 6,
+  "jobs_by_status": {
+    "completed": 15,
+    "processing": 2,
+    "failed": 1
+  },
+  "recent_activity": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "job_type": "batch",
+      "status": "completed",
+      "total_documents": 25,
+      "processed_count": 24,
+      "failed_count": 1,
+      "started_at": "2024-01-15T10:30:00Z",
+      "completed_at": "2024-01-15T10:45:00Z",
+      "created_at": "2024-01-15T10:29:00Z"
+    }
+  ]
+}
+```
+
+### Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Dashboard Metrics" icon="chart-line">
+    Display key metrics on user dashboard:
+    - Total documents processed
+    - Success/failure rates
+    - Recent activity timeline
+  </Card>
+  
+  <Card title="Usage Analytics" icon="chart-pie">
+    Track usage patterns:
+    - Job completion rates
+    - Processing throughput
+    - Error analysis
+  </Card>
+  
+  <Card title="Progress Monitoring" icon="gauge">
+    Monitor ongoing work:
+    - Active job count
+    - Documents in processing
+    - Recent completions
+  </Card>
+  
+  <Card title="Billing Integration" icon="dollar-sign">
+    Calculate usage for billing:
+    - Total documents processed
+    - API calls made
+    - Processing time consumed
+  </Card>
+</CardGroup>
+
+### Implementation Example
+
+```javascript React Dashboard
+import { useEffect, useState } from 'react';
+
+function Dashboard() {
+  const [stats, setStats] = useState(null);
+  
+  useEffect(() => {
+    async function fetchStats() {
+      const response = await fetch('http://localhost:8000/api/history/stats', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+        }
+      });
+      const data = await response.json();
+      setStats(data);
+    }
+    
+    fetchStats();
+  }, []);
+  
+  if (!stats) return <div>Loading...</div>;
+  
+  return (
+    <div className="dashboard">
+      <h1>Dashboard</h1>
+      
+      <div className="metrics">
+        <div className="metric">
+          <h3>Total Jobs</h3>
+          <p>{stats.total_jobs}</p>
+        </div>
+        <div className="metric">
+          <h3>Documents Processed</h3>
+          <p>{stats.documents_processed} / {stats.total_documents}</p>
+        </div>
+        <div className="metric">
+          <h3>Success Rate</h3>
+          <p>
+            {((stats.documents_processed / stats.total_documents) * 100).toFixed(1)}%
+          </p>
+        </div>
+      </div>
+      
+      <div className="recent-activity">
+        <h2>Recent Activity</h2>
+        {stats.recent_activity.map(job => (
+          <div key={job.id} className="activity-item">
+            <span>{job.job_type}</span>
+            <span>{job.status}</span>
+            <span>{job.processed_count}/{job.total_documents} documents</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 401 | Unauthorized - Invalid or missing token |
+| 500 | Internal Server Error |
+
+### Performance Notes
+
+<Note>
+  The stats endpoint fetches up to 1000 jobs to calculate statistics. For users with large job histories, this may take a few seconds. Consider caching the results on the frontend.
+</Note>

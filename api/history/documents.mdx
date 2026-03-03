@@ -1,0 +1,217 @@
+---
+title: Document history
+description: View and search processed documents
+---
+
+## GET /api/history/documents
+
+List recent processed documents for the authenticated user.
+
+### Authentication
+
+Requires valid JWT access token in Authorization header.
+
+### Query Parameters
+
+<ParamField query="limit" type="integer" default="50">
+  Maximum number of documents to return (1-100)
+</ParamField>
+
+### Response
+
+<ResponseField name="documents" type="array">
+  Array of document summaries
+  <Expandable title="DocumentSummary properties">
+    <ResponseField name="id" type="uuid">
+      Unique document identifier
+    </ResponseField>
+    <ResponseField name="title" type="string">
+      Document title
+    </ResponseField>
+    <ResponseField name="file_path" type="string">
+      Path or URL to the document
+    </ResponseField>
+    <ResponseField name="file_source_type" type="string">
+      Source type: `url`, `s3`, `local`
+    </ResponseField>
+    <ResponseField name="status" type="string">
+      Processing status: `pending`, `processing`, `success`, `failed`
+    </ResponseField>
+    <ResponseField name="tags" type="array">
+      Generated metadata tags
+    </ResponseField>
+    <ResponseField name="processed_at" type="datetime">
+      When document was processed (ISO 8601)
+    </ResponseField>
+    <ResponseField name="created_at" type="datetime">
+      When document was created (ISO 8601)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="total" type="integer">
+  Total number of documents returned
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X GET 'http://localhost:8000/api/history/documents?limit=20' \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "documents": [
+    {
+      "id": "789e4567-e89b-12d3-a456-426614174000",
+      "title": "Annual Report 2024",
+      "file_path": "https://example.com/report.pdf",
+      "file_source_type": "url",
+      "status": "success",
+      "tags": ["annual-report", "financial-data", "2024"],
+      "processed_at": "2024-01-15T10:35:00Z",
+      "created_at": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+## GET /api/history/documents/{doc_id}
+
+Get detailed information about a specific document including extracted text and processing metadata.
+
+### Authentication
+
+Requires valid JWT access token. User must be the owner of the document.
+
+### Path Parameters
+
+<ParamField path="doc_id" type="uuid" required>
+  Unique identifier of the document
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="uuid">
+  Document identifier
+</ResponseField>
+
+<ResponseField name="job_id" type="uuid">
+  ID of the job that processed this document
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Document title
+</ResponseField>
+
+<ResponseField name="file_path" type="string">
+  Path or URL to the document
+</ResponseField>
+
+<ResponseField name="file_source_type" type="string">
+  Source type: `url`, `s3`, `local`
+</ResponseField>
+
+<ResponseField name="file_size" type="integer">
+  File size in bytes
+</ResponseField>
+
+<ResponseField name="mime_type" type="string">
+  MIME type (e.g., `application/pdf`)
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Processing status
+</ResponseField>
+
+<ResponseField name="tags" type="array">
+  Generated metadata tags
+</ResponseField>
+
+<ResponseField name="extracted_text" type="string">
+  Full extracted text from the document
+</ResponseField>
+
+<ResponseField name="processing_metadata" type="object">
+  Metadata about how the document was processed
+  <Expandable title="properties">
+    <ResponseField name="extraction_method" type="string">
+      Method used: `pypdf2`, `tesseract_ocr`, `easyocr`, `pymupdf`
+    </ResponseField>
+    <ResponseField name="is_scanned" type="boolean">
+      Whether OCR was used
+    </ResponseField>
+    <ResponseField name="ocr_confidence" type="number">
+      OCR confidence score (0-100)
+    </ResponseField>
+    <ResponseField name="processing_time" type="number">
+      Processing time in seconds
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="error_message" type="string">
+  Error message if processing failed
+</ResponseField>
+
+<ResponseField name="processed_at" type="datetime">
+  When document was processed
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  When document record was created
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X GET 'http://localhost:8000/api/history/documents/789e4567-e89b-12d3-a456-426614174000' \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+## GET /api/history/documents/search
+
+Search documents by title or tags.
+
+### Authentication
+
+Requires valid JWT access token.
+
+### Query Parameters
+
+<ParamField query="query" type="string" required>
+  Search query (minimum 1 character)
+</ParamField>
+
+<ParamField query="limit" type="integer" default="50">
+  Maximum number of documents to return (1-100)
+</ParamField>
+
+### Response
+
+Same format as `GET /api/history/documents`
+
+### Example Request
+
+```bash cURL
+curl -X GET 'http://localhost:8000/api/history/documents/search?query=annual%20report&limit=10' \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Search Behavior
+
+- Searches in document title and tags
+- Case-insensitive partial matching
+- Returns results sorted by relevance
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Bad Request - Query parameter missing or too short |
+| 401 | Unauthorized - Invalid or missing token |
+| 500 | Internal Server Error |

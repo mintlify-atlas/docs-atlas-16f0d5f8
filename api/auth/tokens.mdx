@@ -221,10 +221,107 @@ Authorization: Bearer <access_token>
 - **Refresh Token Expiration**: 7 days
 - **Refresh Token Storage**: SHA-256 hashed
 
+---
+
+## Logout
+
+<api>
+POST /api/auth/logout
+</api>
+
+Invalidate the current refresh token, effectively logging out the user. The access token will continue to work until it expires (30 minutes), but cannot be refreshed.
+
+### Authentication
+
+Requires valid JWT access token in Authorization header.
+
+### Request Body
+
+<ParamField body="refresh_token" type="string" required>
+  The refresh token to invalidate.
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Confirmation message.
+</ResponseField>
+
+<ResponseField name="success" type="boolean">
+  Always `true` on successful logout.
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X POST http://localhost:8000/api/auth/logout \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refresh_token": "YOUR_REFRESH_TOKEN"
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "message": "Successfully logged out",
+  "success": true
+}
+```
+
+<Info>
+After logout, the refresh token is permanently invalidated. The user must login again to obtain new tokens.
+</Info>
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Bad Request - Missing refresh token |
+| 401 | Unauthorized - Invalid or expired access token |
+| 404 | Not Found - Refresh token not found or already revoked |
+| 500 | Internal Server Error |
+
+---
+
+## Token Details
+
+### JWT Token Format
+
+Access tokens are JWT tokens with the following structure:
+
+**Header:**
+```json
+{
+  "alg": "HS256",
+  "typ": "JWT"
+}
+```
+
+**Payload:**
+```json
+{
+  "sub": "user@example.com",
+  "user_id": "123e4567-e89b-12d3-a456-426614174000",
+  "type": "access",
+  "exp": 1704454800,
+  "iat": 1704453000
+}
+```
+
+### Token Lifetimes
+
+- **Access Token Expiration**: 30 minutes (1800 seconds)
+- **Refresh Token Expiration**: 7 days
+- **Refresh Token Storage**: SHA-256 hashed
+
 ### Security Best Practices
 
 - Store tokens securely (never in localStorage for web apps)
 - Always use HTTPS in production
 - Implement token refresh before expiration
 - Handle token expiration gracefully
-- Revoke tokens on logout
+- Call the logout endpoint when users log out
+- Clear tokens from storage after logout

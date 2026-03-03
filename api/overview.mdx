@@ -45,6 +45,9 @@ The API is organized into the following sections:
   <Card title="User Management" icon="user" href="/api/auth/register">
     User registration, login, and token management
   </Card>
+  <Card title="History & Jobs" icon="clock-rotate-left" href="/api/history/jobs">
+    View processing history, job details, and user statistics
+  </Card>
   <Card title="Health & Status" icon="heart-pulse" href="/api/health">
     System health checks and monitoring endpoints
   </Card>
@@ -168,6 +171,12 @@ Process individual PDF files via upload or URL:
 
 Process multiple documents with real-time progress:
 - `WebSocket /api/batch/ws/{job_id}` - Real-time batch processing
+- `POST /api/batch/start` - Start a batch job
+- `GET /api/batch/jobs/{job_id}/status` - Get job status
+- `POST /api/batch/jobs/{job_id}/cancel` - Cancel job
+- `POST /api/batch/jobs/{job_id}/pause` - Pause job
+- `POST /api/batch/jobs/{job_id}/resume` - Resume job
+- `GET /api/batch/active` - List active jobs
 - `POST /api/batch/validate-paths` - Validate file paths
 - `GET /api/batch/template` - Get CSV template
 - `POST /api/batch/process` - Legacy batch processing
@@ -178,7 +187,19 @@ Manage user accounts and authentication:
 - `POST /api/auth/register` - Register new user
 - `POST /api/auth/login` - User login
 - `POST /api/auth/refresh` - Refresh access token
+- `POST /api/auth/logout` - Logout user
 - `GET /api/auth/me` - Get current user
+
+### History & Jobs
+
+View processing history and statistics:
+- `GET /api/history/jobs` - List user's jobs
+- `GET /api/history/jobs/{job_id}` - Get job details
+- `DELETE /api/history/jobs/{job_id}` - Delete job
+- `GET /api/history/documents` - List recent documents
+- `GET /api/history/documents/{doc_id}` - Get document details
+- `GET /api/history/documents/search` - Search documents
+- `GET /api/history/stats` - Get user statistics
 
 ### Health & Monitoring
 
@@ -327,6 +348,9 @@ curl -X POST http://localhost:8000/api/single/process \
   </Card>
   <Card title="Batch Processing" icon="files" href="/api/batch/websocket">
     Process multiple documents at once
+  </Card>
+  <Card title="Job History" icon="clock-rotate-left" href="/api/history/jobs">
+    View processing history and statistics
   </Card>
   <Card title="User Management" icon="user" href="/api/auth/register">
     Create and manage user accounts

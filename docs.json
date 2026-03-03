@@ -81,6 +81,7 @@
             "group": "Batch Processing",
             "pages": [
               "api/batch/websocket",
+              "api/batch/control",
               "api/batch/validate",
               "api/batch/template",
               "api/batch/process"
@@ -92,6 +93,14 @@
               "api/auth/register",
               "api/auth/login",
               "api/auth/tokens"
+            ]
+          },
+          {
+            "group": "History & Jobs",
+            "pages": [
+              "api/history/jobs",
+              "api/history/documents",
+              "api/history/stats"
             ]
           },
           {

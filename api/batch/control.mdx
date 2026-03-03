@@ -1,0 +1,407 @@
+---
+title: Job control
+description: Control and monitor batch processing jobs
+---
+
+## POST /api/batch/start
+
+Start a new batch processing job. This is an alternative to the WebSocket endpoint for scenarios where you want to start a job and poll for status updates.
+
+### Authentication
+
+Requires valid JWT access token in Authorization header.
+
+### Request Body
+
+<ParamField body="documents" type="array" required>
+  Array of documents to process
+  <Expandable title="Document object">
+    <ParamField body="title" type="string" required>
+      Document title
+    </ParamField>
+    <ParamField body="file_path" type="string" required>
+      Path or URL to the PDF file
+    </ParamField>
+    <ParamField body="file_source_type" type="string" required>
+      Source type: `url`, `s3`, or `local`
+    </ParamField>
+    <ParamField body="description" type="string">
+      Optional document description
+    </ParamField>
+    <ParamField body="publishing_date" type="string">
+      Optional publishing date
+    </ParamField>
+    <ParamField body="file_size" type="string">
+      Optional file size
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="config" type="object" required>
+  Tagging configuration
+  <Expandable title="TaggingConfig">
+    <ParamField body="api_key" type="string" required>
+      OpenRouter API key
+    </ParamField>
+    <ParamField body="model_name" type="string" default="openai/gpt-4o-mini">
+      AI model to use
+    </ParamField>
+    <ParamField body="num_pages" type="integer" default="3">
+      Number of pages to extract (1-10)
+    </ParamField>
+    <ParamField body="num_tags" type="integer" default="8">
+      Number of tags to generate (3-15)
+    </ParamField>
+    <ParamField body="exclusion_words" type="array">
+      Words to exclude from tags
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="column_mapping" type="object">
+  Optional column mapping for custom CSV structures
+</ParamField>
+
+<ParamField body="job_id" type="string">
+  Optional client-generated job ID. Server generates one if not provided.
+</ParamField>
+
+### Response
+
+<ResponseField name="job_id" type="string">
+  Unique identifier for the batch job
+</ResponseField>
+
+<ResponseField name="total_documents" type="integer">
+  Number of documents to process
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X POST http://localhost:8000/api/batch/start \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "documents": [
+      {
+        "title": "Document 1",
+        "file_path": "https://example.com/doc1.pdf",
+        "file_source_type": "url"
+      }
+    ],
+    "config": {
+      "api_key": "sk-xxx",
+      "model_name": "openai/gpt-4o-mini",
+      "num_pages": 3,
+      "num_tags": 8
+    }
+  }'
+```
+
+### Example Response
+
+```json
+{
+  "job_id": "batch-1704454800-abc123",
+  "total_documents": 1,
+  "message": "Batch processing started"
+}
+```
+
+## GET /api/batch/jobs/{job_id}/status
+
+Get the current status of a batch processing job.
+
+### Authentication
+
+Requires valid JWT access token.
+
+### Path Parameters
+
+<ParamField path="job_id" type="string" required>
+  Job identifier
+</ParamField>
+
+### Response
+
+<ResponseField name="job_id" type="string">
+  Job identifier
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status: `pending`, `processing`, `completed`, `failed`, `cancelled`, `paused`
+</ResponseField>
+
+<ResponseField name="total_documents" type="integer">
+  Total documents in job
+</ResponseField>
+
+<ResponseField name="processed_count" type="integer">
+  Number of processed documents
+</ResponseField>
+
+<ResponseField name="failed_count" type="integer">
+  Number of failed documents
+</ResponseField>
+
+<ResponseField name="progress" type="number">
+  Progress percentage (0.0 - 1.0)
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X GET http://localhost:8000/api/batch/jobs/batch-1704454800-abc123/status \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+## POST /api/batch/jobs/{job_id}/cancel
+
+Cancel a running batch processing job.
+
+### Authentication
+
+Requires valid JWT access token.
+
+### Path Parameters
+
+<ParamField path="job_id" type="string" required>
+  Job identifier
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Confirmation message
+</ResponseField>
+
+<ResponseField name="job_id" type="string">
+  Job identifier
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X POST http://localhost:8000/api/batch/jobs/batch-1704454800-abc123/cancel \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+<Warning>
+Cancelled jobs cannot be resumed. Documents that were already processed will retain their results.
+</Warning>
+
+## POST /api/batch/jobs/{job_id}/pause
+
+Pause a running batch processing job. Processing will stop after the current document completes.
+
+### Authentication
+
+Requires valid JWT access token.
+
+### Path Parameters
+
+<ParamField path="job_id" type="string" required>
+  Job identifier
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Confirmation message
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X POST http://localhost:8000/api/batch/jobs/batch-1704454800-abc123/pause \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+<Info>
+Paused jobs can be resumed later. This is useful for managing API rate limits or temporarily stopping processing.
+</Info>
+
+## POST /api/batch/jobs/{job_id}/resume
+
+Resume a paused batch processing job.
+
+### Authentication
+
+Requires valid JWT access token.
+
+### Path Parameters
+
+<ParamField path="job_id" type="string" required>
+  Job identifier
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Confirmation message
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X POST http://localhost:8000/api/batch/jobs/batch-1704454800-abc123/resume \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+## GET /api/batch/active
+
+Get a list of all active (running or paused) batch jobs for the current user.
+
+### Authentication
+
+Requires valid JWT access token.
+
+### Response
+
+<ResponseField name="jobs" type="array">
+  Array of active job summaries
+  <Expandable title="properties">
+    <ResponseField name="job_id" type="string">
+      Job identifier
+    </ResponseField>
+    <ResponseField name="status" type="string">
+      Current status
+    </ResponseField>
+    <ResponseField name="total_documents" type="integer">
+      Total documents
+    </ResponseField>
+    <ResponseField name="processed_count" type="integer">
+      Processed documents
+    </ResponseField>
+    <ResponseField name="started_at" type="datetime">
+      When job started
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X GET http://localhost:8000/api/batch/active \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "jobs": [
+    {
+      "job_id": "batch-1704454800-abc123",
+      "status": "processing",
+      "total_documents": 100,
+      "processed_count": 45,
+      "started_at": "2024-01-15T10:30:00Z"
+    }
+  ]
+}
+```
+
+## Job Control Workflow
+
+<Steps>
+  <Step title="Start a job">
+    Use `POST /api/batch/start` to begin processing
+  </Step>
+  
+  <Step title="Monitor progress">
+    Poll `GET /api/batch/jobs/{job_id}/status` for updates
+  </Step>
+  
+  <Step title="Control execution">
+    Use pause/resume/cancel as needed
+    - **Pause**: Temporarily stop (e.g., for rate limit management)
+    - **Resume**: Continue from where it paused
+    - **Cancel**: Stop permanently
+  </Step>
+  
+  <Step title="Check active jobs">
+    Use `GET /api/batch/active` to see all running jobs
+  </Step>
+</Steps>
+
+## Polling vs WebSocket
+
+<Tabs>
+  <Tab title="Polling (Job Control API)">
+    **Pros:**
+    - Simple HTTP requests
+    - Works with any HTTP client
+    - No persistent connection needed
+    
+    **Cons:**
+    - Higher latency (polling interval)
+    - More network overhead
+    - No real-time updates
+    
+    **Use when:**
+    - Running batch jobs from scripts
+    - Backend-to-backend integration
+    - Firewall blocks WebSocket
+  </Tab>
+  
+  <Tab title="WebSocket">
+    **Pros:**
+    - Real-time progress updates
+    - Lower latency
+    - Efficient for long-running jobs
+    
+    **Cons:**
+    - Requires WebSocket support
+    - More complex client code
+    - Persistent connection
+    
+    **Use when:**
+    - Building interactive UI
+    - Need real-time progress bars
+    - Processing many documents
+  </Tab>
+</Tabs>
+
+### Recommended Polling Interval
+
+```javascript
+// Poll every 2-5 seconds for active jobs
+const pollInterval = 3000; // 3 seconds
+
+async function pollJobStatus(jobId) {
+  const interval = setInterval(async () => {
+    const response = await fetch(
+      `http://localhost:8000/api/batch/jobs/${jobId}/status`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      }
+    );
+    const status = await response.json();
+    
+    console.log(`Progress: ${(status.progress * 100).toFixed(1)}%`);
+    
+    if (status.status === 'completed' || status.status === 'failed') {
+      clearInterval(interval);
+      console.log('Job finished:', status.status);
+    }
+  }, pollInterval);
+}
+```
+
+## Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 400 | Bad Request - Invalid job ID or parameters |
+| 401 | Unauthorized - Invalid or missing token |
+| 404 | Not Found - Job does not exist |
+| 409 | Conflict - Job is in invalid state for this operation |
+| 500 | Internal Server Error |

@@ -1,0 +1,252 @@
+---
+title: Job history
+description: List and manage processing jobs
+---
+
+## GET /api/history/jobs
+
+List processing jobs for the authenticated user with pagination and filtering.
+
+### Authentication
+
+Requires valid JWT access token in Authorization header.
+
+### Query Parameters
+
+<ParamField query="limit" type="integer" default="50">
+  Maximum number of jobs to return (1-100)
+</ParamField>
+
+<ParamField query="offset" type="integer" default="0">
+  Number of jobs to skip for pagination
+</ParamField>
+
+<ParamField query="status" type="string">
+  Filter by job status: `pending`, `processing`, `completed`, `failed`, `cancelled`
+</ParamField>
+
+### Response
+
+<ResponseField name="jobs" type="array">
+  Array of job summaries
+  <Expandable title="JobSummary properties">
+    <ResponseField name="id" type="uuid">
+      Unique job identifier
+    </ResponseField>
+    <ResponseField name="job_type" type="string">
+      Type of job: `single`, `batch`, `webhook`
+    </ResponseField>
+    <ResponseField name="status" type="string">
+      Current status: `pending`, `processing`, `completed`, `failed`, `cancelled`
+    </ResponseField>
+    <ResponseField name="total_documents" type="integer">
+      Total documents in this job
+    </ResponseField>
+    <ResponseField name="processed_count" type="integer">
+      Number of successfully processed documents
+    </ResponseField>
+    <ResponseField name="failed_count" type="integer">
+      Number of failed documents
+    </ResponseField>
+    <ResponseField name="started_at" type="datetime">
+      When processing started (ISO 8601 format)
+    </ResponseField>
+    <ResponseField name="completed_at" type="datetime">
+      When processing completed (ISO 8601 format)
+    </ResponseField>
+    <ResponseField name="created_at" type="datetime">
+      When job was created (ISO 8601 format)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="total" type="integer">
+  Total number of jobs matching the filter
+</ResponseField>
+
+<ResponseField name="limit" type="integer">
+  Limit used for this request
+</ResponseField>
+
+<ResponseField name="offset" type="integer">
+  Offset used for this request
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X GET 'http://localhost:8000/api/history/jobs?limit=10&status=completed' \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "jobs": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "job_type": "batch",
+      "status": "completed",
+      "total_documents": 25,
+      "processed_count": 24,
+      "failed_count": 1,
+      "started_at": "2024-01-15T10:30:00Z",
+      "completed_at": "2024-01-15T10:45:00Z",
+      "created_at": "2024-01-15T10:29:00Z"
+    }
+  ],
+  "total": 1,
+  "limit": 10,
+  "offset": 0
+}
+```
+
+## GET /api/history/jobs/{job_id}
+
+Get detailed information about a specific job including all its documents.
+
+### Authentication
+
+Requires valid JWT access token. User must be the owner of the job.
+
+### Path Parameters
+
+<ParamField path="job_id" type="uuid" required>
+  Unique identifier of the job
+</ParamField>
+
+### Response
+
+<ResponseField name="id" type="uuid">
+  Unique job identifier
+</ResponseField>
+
+<ResponseField name="job_type" type="string">
+  Type of job: `single`, `batch`, `webhook`
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Current status
+</ResponseField>
+
+<ResponseField name="total_documents" type="integer">
+  Total documents in this job
+</ResponseField>
+
+<ResponseField name="processed_count" type="integer">
+  Successfully processed documents
+</ResponseField>
+
+<ResponseField name="failed_count" type="integer">
+  Failed documents
+</ResponseField>
+
+<ResponseField name="config" type="object">
+  Configuration used for processing (TaggingConfig)
+</ResponseField>
+
+<ResponseField name="error_message" type="string">
+  Error message if job failed
+</ResponseField>
+
+<ResponseField name="started_at" type="datetime">
+  When processing started
+</ResponseField>
+
+<ResponseField name="completed_at" type="datetime">
+  When processing completed
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  When job was created
+</ResponseField>
+
+<ResponseField name="documents" type="array">
+  Array of all documents in this job
+  <Expandable title="DocumentSummary properties">
+    <ResponseField name="id" type="uuid">
+      Document ID
+    </ResponseField>
+    <ResponseField name="title" type="string">
+      Document title
+    </ResponseField>
+    <ResponseField name="file_path" type="string">
+      Path or URL to the document
+    </ResponseField>
+    <ResponseField name="file_source_type" type="string">
+      Source type: `url`, `s3`, `local`
+    </ResponseField>
+    <ResponseField name="status" type="string">
+      Processing status
+    </ResponseField>
+    <ResponseField name="tags" type="array">
+      Generated metadata tags
+    </ResponseField>
+    <ResponseField name="error_message" type="string">
+      Error message if processing failed
+    </ResponseField>
+    <ResponseField name="processed_at" type="datetime">
+      When document was processed
+    </ResponseField>
+    <ResponseField name="created_at" type="datetime">
+      When document record was created
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X GET 'http://localhost:8000/api/history/jobs/123e4567-e89b-12d3-a456-426614174000' \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+## DELETE /api/history/jobs/{job_id}
+
+Delete a job and all its associated documents. Requires ownership.
+
+### Authentication
+
+Requires valid JWT access token. User must be the owner of the job.
+
+### Path Parameters
+
+<ParamField path="job_id" type="uuid" required>
+  Unique identifier of the job to delete
+</ParamField>
+
+### Response
+
+<ResponseField name="message" type="string">
+  Success message
+</ResponseField>
+
+<ResponseField name="job_id" type="string">
+  ID of the deleted job
+</ResponseField>
+
+### Example Request
+
+```bash cURL
+curl -X DELETE 'http://localhost:8000/api/history/jobs/123e4567-e89b-12d3-a456-426614174000' \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+### Example Response
+
+```json
+{
+  "message": "Job deleted successfully",
+  "job_id": "123e4567-e89b-12d3-a456-426614174000"
+}
+```
+
+### Error Responses
+
+| Status | Description |
+|--------|-------------|
+| 401 | Unauthorized - Invalid or missing token |
+| 403 | Forbidden - Not the owner of this job |
+| 404 | Not Found - Job does not exist |
+| 500 | Internal Server Error |
