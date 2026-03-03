@@ -1,0 +1,256 @@
+---
+title: 'GET /api/single/preview'
+description: 'Proxy endpoint to fetch and serve PDF files from URLs for preview'
+---
+
+## Endpoint
+
+```
+GET /api/single/preview
+```
+
+## Authentication
+
+This endpoint does not require authentication.
+
+## Description
+
+Proxy endpoint to fetch and serve PDF files from URLs, bypassing CORS restrictions for frontend preview functionality. This allows PDFs from external sources to be displayed in browser iframes without running into cross-origin issues.
+
+## Request
+
+### Query Parameters
+
+<ParamField query="url" type="string" required>
+  URL of the PDF to preview
+  
+  - Must start with `http://` or `https://`
+  - Examples: CloudFront URLs, S3 URLs, direct file links
+  - 60-second timeout, 50MB limit
+</ParamField>
+
+### Example Request
+
+```
+GET /api/single/preview?url=https://example.com/document.pdf
+```
+
+## Response
+
+### Success Response (200 OK)
+
+**Content-Type:** `application/pdf`
+
+**Headers:**
+- `Content-Disposition: inline; filename=preview.pdf`
+- `X-Content-Type-Options: nosniff`
+
+**Body:** Binary PDF data
+
+The PDF is returned with headers optimized for iframe embedding, allowing it to be displayed directly in the browser.
+
+## Error Responses
+
+### 400 Bad Request
+
+**Invalid URL format:**
+```json
+{
+  "detail": "Invalid URL. Must start with http:// or https://"
+}
+```
+
+**Failed to download PDF:**
+```json
+{
+  "detail": "Failed to download PDF from URL: <error message>"
+}
+```
+
+Common download errors:
+- `Connection timeout` - Server took too long to respond (>60s)
+- `File too large` - PDF exceeds 50MB limit
+- `Invalid content type` - URL does not point to a PDF
+- `HTTP 404` - File not found
+- `HTTP 403` - Access denied
+
+### 500 Internal Server Error
+
+```json
+{
+  "detail": "Internal server error: <error message>"
+}
+```
+
+## Example Usage
+
+### Using cURL
+
+```bash
+curl "http://localhost:8000/api/single/preview?url=https://example.com/document.pdf" \
+  --output preview.pdf
+```
+
+### Using Browser (Direct Access)
+
+```
+http://localhost:8000/api/single/preview?url=https://example.com/document.pdf
+```
+
+### Using HTML iframe
+
+```html
+<iframe
+  src="http://localhost:8000/api/single/preview?url=https://example.com/document.pdf"
+  width="100%"
+  height="600px"
+  style="border: 1px solid #ccc;"
+>
+  PDF preview not supported
+</iframe>
+```
+
+### Using JavaScript (fetch)
+
+```javascript
+const url = encodeURIComponent('https://example.com/document.pdf');
+const response = await fetch(`http://localhost:8000/api/single/preview?url=${url}`);
+
+if (response.ok) {
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  
+  // Display in iframe
+  document.getElementById('pdf-iframe').src = objectUrl;
+  
+  // Or trigger download
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = 'preview.pdf';
+  a.click();
+} else {
+  const error = await response.json();
+  console.error('Preview failed:', error.detail);
+}
+```
+
+### Using React Component
+
+```tsx
+import { useState } from 'react';
+
+function PDFPreview({ pdfUrl }: { pdfUrl: string }) {
+  const [error, setError] = useState<string | null>(null);
+  
+  const previewUrl = `http://localhost:8000/api/single/preview?url=${encodeURIComponent(pdfUrl)}`;
+  
+  return (
+    <div className="pdf-preview">
+      {error ? (
+        <div className="error">{error}</div>
+      ) : (
+        <iframe
+          src={previewUrl}
+          width="100%"
+          height="600px"
+          onError={() => setError('Failed to load PDF preview')}
+        />
+      )}
+    </div>
+  );
+}
+```
+
+## Use Cases
+
+### 1. Preview Before Processing
+
+Allow users to preview PDFs from URLs before submitting them for tag generation:
+
+```javascript
+// User enters URL
+const pdfUrl = 'https://example.com/report.pdf';
+
+// Show preview
+setPreviewUrl(`/api/single/preview?url=${encodeURIComponent(pdfUrl)}`);
+
+// User confirms and processes
+await processSinglePDF({ pdf_url: pdfUrl, config });
+```
+
+### 2. CORS Bypass for External PDFs
+
+Many external PDF sources have CORS policies that prevent direct iframe embedding. This endpoint acts as a proxy to bypass those restrictions:
+
+```html
+<!-- This would fail due to CORS -->
+<iframe src="https://external-site.com/protected.pdf"></iframe>
+
+<!-- This works via proxy -->
+<iframe src="/api/single/preview?url=https://external-site.com/protected.pdf"></iframe>
+```
+
+### 3. Uniform Preview Experience
+
+Provide a consistent preview experience for both uploaded files and URLs:
+
+```javascript
+function getPreviewUrl(source) {
+  if (source.type === 'file') {
+    // Local file upload
+    return URL.createObjectURL(source.file);
+  } else if (source.type === 'url') {
+    // External URL (via proxy)
+    return `/api/single/preview?url=${encodeURIComponent(source.url)}`;
+  }
+}
+```
+
+## Technical Details
+
+### How It Works
+
+1. Client requests preview with a PDF URL
+2. Backend validates URL format (http/https)
+3. Backend downloads PDF from URL (using `FileHandler.download_file()`)
+4. Backend validates downloaded content is a PDF
+5. Backend returns PDF with proper headers for inline display
+
+### Headers Explained
+
+**Content-Disposition: inline**
+- Tells browser to display PDF inline (not download)
+- `filename=preview.pdf` provides fallback name if user saves
+
+**X-Content-Type-Options: nosniff**
+- Prevents MIME type sniffing
+- Ensures browser treats response as PDF
+
+### Limitations
+
+- **Maximum file size:** 50MB
+- **Timeout:** 60 seconds
+- **Rate limiting:** Subject to backend rate limits
+- **URL requirements:** Must be publicly accessible via HTTP/HTTPS
+- **No authentication:** Cannot preview PDFs requiring auth headers
+
+### Security Considerations
+
+This endpoint acts as an open proxy for PDF URLs. Consider implementing:
+
+1. **URL allowlist:** Restrict to trusted domains
+2. **Rate limiting:** Prevent abuse
+3. **Content validation:** Verify downloaded content is actually a PDF
+4. **Size limits:** Prevent downloading huge files
+
+Current implementation includes basic validation:
+- URL format validation (http/https only)
+- File size limit (50MB)
+- Timeout protection (60s)
+- Content-Type validation
+
+## Source Code
+
+Implementation: `backend/app/routers/single.py:271`
+
+File Handler: `backend/app/services/file_handler.py` (download_file method)

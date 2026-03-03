@@ -1,0 +1,636 @@
+---
+title: Installation
+description: Complete installation guide using Docker Compose
+---
+
+## Overview
+
+The Meta-Data Tag Generator uses Docker Compose to orchestrate multiple services including the FastAPI backend, Next.js frontend, PostgreSQL database, MinIO object storage, and Redis for job management.
+
+<Note>
+  **Estimated installation time**: 10-15 minutes (including Docker image downloads)
+</Note>
+
+## Prerequisites
+
+<CardGroup cols={2}>
+  <Card title="System Requirements">
+    - **OS**: Linux, macOS, or Windows with WSL2
+    - **RAM**: 4GB minimum, 8GB recommended
+    - **Storage**: 5GB minimum, 20GB recommended
+    - **CPU**: 2+ cores
+  </Card>
+  
+  <Card title="Required Software">
+    - Docker 20.10+
+    - Docker Compose 2.0+
+    - Git
+    - Port availability: 3001, 8000, 5432, 9000, 9001, 6379
+  </Card>
+</CardGroup>
+
+### Install Docker & Docker Compose
+
+<Tabs>
+  <Tab title="Linux">
+    ```bash
+    # Install Docker
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sudo sh get-docker.sh
+    
+    # Add your user to docker group
+    sudo usermod -aG docker $USER
+    newgrp docker
+    
+    # Verify installation
+    docker --version
+    docker-compose --version
+    ```
+  </Tab>
+  
+  <Tab title="macOS">
+    1. Download [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/)
+    2. Install and start Docker Desktop
+    3. Verify installation:
+    ```bash
+    docker --version
+    docker-compose --version
+    ```
+  </Tab>
+  
+  <Tab title="Windows">
+    1. Install [WSL2](https://docs.microsoft.com/en-us/windows/wsl/install)
+    2. Download [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/)
+    3. Enable WSL2 integration in Docker Desktop settings
+    4. Verify in WSL2 terminal:
+    ```bash
+    docker --version
+    docker-compose --version
+    ```
+  </Tab>
+</Tabs>
+
+## Installation Steps
+
+<Steps>
+  <Step title="Clone the Repository">
+    ```bash
+    git clone https://github.com/your-org/Meta-Data-Tag-Generator.git
+    cd Meta-Data-Tag-Generator/source
+    ```
+  </Step>
+  
+  <Step title="Configure Environment Variables (Optional)">
+    Create a `.env` file in the `backend` directory to customize settings:
+    
+    ```bash .env
+    # Database Settings
+    DATABASE_URL=postgresql://metatag:metatag_secret@postgres:5432/metatag_db
+    DB_HOST=postgres
+    DB_PORT=5432
+    DB_USER=metatag
+    DB_PASSWORD=metatag_secret
+    DB_NAME=metatag_db
+    
+    # MinIO Object Storage
+    MINIO_ENDPOINT=minio:9000
+    MINIO_ACCESS_KEY=minioadmin
+    MINIO_SECRET_KEY=minioadmin123
+    MINIO_BUCKET=metatag-files
+    
+    # Redis
+    REDIS_URL=redis://redis:6379/0
+    
+    # JWT Authentication
+    JWT_SECRET_KEY=your-super-secret-jwt-key-change-in-production
+    JWT_ALGORITHM=HS256
+    JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
+    JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
+    
+    # OpenRouter API (optional defaults)
+    DEFAULT_MODEL=openai/gpt-4o-mini
+    API_CONNECT_TIMEOUT=30
+    API_READ_TIMEOUT=90
+    API_MAX_RETRIES=3
+    
+    # Processing Limits
+    MAX_PDF_SIZE_MB=50
+    MAX_PAGES_TO_EXTRACT=10
+    MAX_TAGS=15
+    MIN_TAGS=3
+    ```
+    
+    <Warning>
+      **Production deployment**: Change `JWT_SECRET_KEY`, `DB_PASSWORD`, and MinIO credentials before deploying to production!
+    </Warning>
+  </Step>
+  
+  <Step title="Review Docker Compose Configuration">
+    The `docker-compose.yml` defines 6 services:
+    
+    ```yaml docker-compose.yml
+    services:
+      # PostgreSQL - User data and job history
+      postgres:
+        image: postgres:15-alpine
+        ports: ["5432:5432"]
+        environment:
+          POSTGRES_USER: metatag
+          POSTGRES_PASSWORD: metatag_secret
+          POSTGRES_DB: metatag_db
+      
+      # MinIO - Object storage for PDFs
+      minio:
+        image: minio/minio:latest
+        ports: ["9000:9000", "9001:9001"]
+        environment:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin123
+      
+      # Redis - Job state and pub/sub
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+      
+      # Backend API - FastAPI application
+      backend:
+        build: ./backend
+        ports: ["8000:8000"]
+        depends_on:
+          - postgres
+          - minio
+          - redis
+      
+      # Frontend - Next.js application
+      frontend:
+        build: ./frontend
+        ports: ["3001:3000"]
+        depends_on:
+          - backend
+    ```
+    
+    <Info>
+      All services include health checks to ensure proper startup order. The backend waits for the database to be ready before starting.
+    </Info>
+  </Step>
+  
+  <Step title="Build and Start Services">
+    ```bash
+    # Build all Docker images (first time only)
+    docker-compose build
+    
+    # Start all services in detached mode
+    docker-compose up -d
+    ```
+    
+    <Note>
+      First-time build takes 5-10 minutes as it downloads base images and installs dependencies including Tesseract OCR, EasyOCR models, and PyTorch.
+    </Note>
+    
+    Expected output:
+    ```
+    [+] Running 6/6
+     ✔ Container meta-tag-postgres   Healthy
+     ✔ Container meta-tag-minio      Healthy
+     ✔ Container meta-tag-redis      Healthy
+     ✔ Container meta-tag-backend    Healthy
+     ✔ Container meta-tag-frontend   Started
+    ```
+  </Step>
+  
+  <Step title="Verify Installation">
+    Check that all services are running:
+    
+    ```bash
+    docker-compose ps
+    ```
+    
+    All services should show `Up` or `Up (healthy)` status.
+    
+    Test individual services:
+    
+    <Tabs>
+      <Tab title="Backend API">
+        ```bash
+        curl http://localhost:8000/api/health
+        ```
+        
+        Expected response:
+        ```json
+        {
+          "status": "healthy",
+          "version": "2.0.0",
+          "message": "Document Meta-Tagging API is running"
+        }
+        ```
+      </Tab>
+      
+      <Tab title="Frontend">
+        Open browser to:
+        ```
+        http://localhost:3001
+        ```
+        
+        You should see the Meta-Data Tag Generator interface.
+      </Tab>
+      
+      <Tab title="PostgreSQL">
+        ```bash
+        docker-compose exec postgres psql -U metatag -d metatag_db -c "SELECT version();"
+        ```
+      </Tab>
+      
+      <Tab title="MinIO">
+        Open browser to:
+        ```
+        http://localhost:9001
+        ```
+        
+        Login:
+        - Username: `minioadmin`
+        - Password: `minioadmin123`
+      </Tab>
+      
+      <Tab title="Redis">
+        ```bash
+        docker-compose exec redis redis-cli ping
+        ```
+        
+        Expected: `PONG`
+      </Tab>
+    </Tabs>
+  </Step>
+  
+  <Step title="Initialize Database Schema">
+    The database schema is automatically created on first startup via the init script:
+    
+    ```bash
+    # Verify tables were created
+    docker-compose exec postgres psql -U metatag -d metatag_db -c "\dt"
+    ```
+    
+    Expected tables:
+    - `users`
+    - `refresh_tokens`
+    - `processing_jobs`
+    - `documents`
+    
+    <Info>
+      The schema creation SQL is located at `backend/app/database/schema.sql` and is automatically executed via Docker volume mount.
+    </Info>
+  </Step>
+  
+  <Step title="Create First User Account">
+    Register a user account via the API:
+    
+    ```bash
+    curl -X POST http://localhost:8000/api/auth/register \
+      -H "Content-Type: application/json" \
+      -d '{
+        "email": "admin@example.com",
+        "password": "SecurePassword123!",
+        "full_name": "Admin User"
+      }'
+    ```
+    
+    Expected response:
+    ```json
+    {
+      "access_token": "eyJhbGc...",
+      "refresh_token": "eyJhbGc...",
+      "token_type": "bearer",
+      "user": {
+        "id": "uuid-here",
+        "email": "admin@example.com",
+        "full_name": "Admin User"
+      }
+    }
+    ```
+    
+    Save the `access_token` for API requests.
+  </Step>
+</Steps>
+
+## Service Architecture
+
+```mermaid
+graph TB
+    Client[Web Browser :3001] --> Frontend[Next.js Frontend]
+    Frontend --> Backend[FastAPI Backend :8000]
+    Backend --> DB[(PostgreSQL :5432)]
+    Backend --> MinIO[MinIO Storage :9000]
+    Backend --> Redis[Redis :6379]
+    Backend --> OpenRouter[OpenRouter API]
+    Backend --> Tesseract[Tesseract OCR]
+    Backend --> EasyOCR[EasyOCR Models]
+    
+    style Backend fill:#4299e1
+    style Frontend fill:#48bb78
+    style DB fill:#ed8936
+    style MinIO fill:#9f7aea
+    style Redis fill:#f56565
+```
+
+## Port Mapping
+
+| Service | Internal Port | External Port | Purpose |
+|---------|--------------|---------------|----------|
+| Frontend | 3000 | 3001 | Web UI |
+| Backend | 8000 | 8000 | REST API & WebSocket |
+| PostgreSQL | 5432 | 5432 | Database |
+| MinIO API | 9000 | 9000 | S3-compatible storage |
+| MinIO Console | 9001 | 9001 | Admin interface |
+| Redis | 6379 | 6379 | Job queue |
+
+<Warning>
+  For production deployments, **do not expose** PostgreSQL, MinIO, and Redis ports publicly. Use a reverse proxy (nginx) and firewall rules.
+</Warning>
+
+## Volume Management
+
+Docker Compose creates persistent volumes for data:
+
+```bash
+# List volumes
+docker volume ls | grep meta-tag
+
+# Inspect volume
+docker volume inspect source_postgres_data
+
+# Backup database
+docker-compose exec postgres pg_dump -U metatag metatag_db > backup.sql
+
+# Restore database
+cat backup.sql | docker-compose exec -T postgres psql -U metatag -d metatag_db
+```
+
+### Volume Locations
+
+| Volume | Purpose | Typical Size |
+|--------|---------|-------------|
+| `postgres_data` | User data, jobs, documents | 100MB - 10GB |
+| `minio_data` | Uploaded PDFs, results | 1GB - 100GB |
+| `redis_data` | Job state, cache | 10MB - 1GB |
+| `easyocr_models` | Pre-trained OCR models | 400MB - 2GB |
+
+<Tip>
+  EasyOCR models are downloaded on first use and cached in the `easyocr_models` volume. This prevents re-downloading on container restart.
+</Tip>
+
+## Resource Limits
+
+The backend service has resource limits defined:
+
+```yaml
+deploy:
+  resources:
+    limits:
+      memory: 4G
+    reservations:
+      memory: 1G
+```
+
+<Info>
+  **Why 4GB limit?** EasyOCR requires significant memory when loading models for complex scripts. For production with heavy OCR workloads, increase to 8GB.
+</Info>
+
+### Adjusting Resources
+
+Edit `docker-compose.yml`:
+
+```yaml
+backend:
+  deploy:
+    resources:
+      limits:
+        memory: 8G  # Increase for heavy OCR
+        cpus: '4'   # Limit CPU usage
+      reservations:
+        memory: 2G  # Minimum guaranteed
+```
+
+Apply changes:
+```bash
+docker-compose up -d --force-recreate backend
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Services won't start">
+    **Check logs**:
+    ```bash
+    docker-compose logs -f backend
+    docker-compose logs -f postgres
+    ```
+    
+    **Common issues**:
+    - Ports already in use: Change port mappings in `docker-compose.yml`
+    - Insufficient memory: Increase Docker Desktop memory allocation
+    - Database not ready: Wait for health checks to pass
+  </Accordion>
+  
+  <Accordion title="Database connection errors">
+    **Symptoms**: Backend logs show `connection refused` or `database not ready`
+    
+    **Solutions**:
+    ```bash
+    # Check PostgreSQL health
+    docker-compose ps postgres
+    
+    # View PostgreSQL logs
+    docker-compose logs postgres
+    
+    # Restart PostgreSQL
+    docker-compose restart postgres
+    
+    # Verify connection
+    docker-compose exec postgres pg_isready -U metatag
+    ```
+  </Accordion>
+  
+  <Accordion title="MinIO bucket creation fails">
+    **Create bucket manually**:
+    
+    1. Open http://localhost:9001
+    2. Login with `minioadmin` / `minioadmin123`
+    3. Create bucket named `metatag-files`
+    4. Set policy to `public` (or configure access policies)
+    
+    Or via CLI:
+    ```bash
+    docker-compose exec minio mc alias set local http://localhost:9000 minioadmin minioadmin123
+    docker-compose exec minio mc mb local/metatag-files
+    ```
+  </Accordion>
+  
+  <Accordion title="EasyOCR model download issues">
+    **Symptoms**: First OCR request takes very long or fails
+    
+    **Solution**: Pre-download models:
+    ```bash
+    docker-compose exec backend python -c "import easyocr; reader = easyocr.Reader(['en', 'hi'])"
+    ```
+    
+    This downloads models to the `easyocr_models` volume for future use.
+  </Accordion>
+  
+  <Accordion title="Frontend can't connect to backend">
+    **Check environment variable**:
+    
+    Frontend expects `NEXT_PUBLIC_BACKEND_URL=http://backend:8000`
+    
+    For local development:
+    ```bash
+    # In frontend/.env.local
+    NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+    ```
+    
+    Rebuild frontend:
+    ```bash
+    docker-compose up -d --build frontend
+    ```
+  </Accordion>
+  
+  <Accordion title="Permission denied errors">
+    **Linux users**: Docker volume permissions issue
+    
+    ```bash
+    # Fix ownership
+    sudo chown -R $USER:$USER .
+    
+    # Or run with sudo
+    sudo docker-compose up -d
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Development Mode
+
+For active development, enable live code reloading:
+
+<Steps>
+  <Step title="Edit docker-compose.yml">
+    Uncomment the volume mounts:
+    
+    ```yaml
+    backend:
+      volumes:
+        # Mount code for development (comment out for production)
+        - ./backend/app:/app/app
+    ```
+  </Step>
+  
+  <Step title="Restart services">
+    ```bash
+    docker-compose restart backend
+    ```
+    
+    Now code changes are immediately reflected without rebuilding.
+  </Step>
+  
+  <Step title="View logs">
+    ```bash
+    docker-compose logs -f backend frontend
+    ```
+  </Step>
+</Steps>
+
+## Stopping Services
+
+<Tabs>
+  <Tab title="Stop (keep data)">
+    ```bash
+    docker-compose stop
+    ```
+    
+    Stops containers but preserves data in volumes.
+  </Tab>
+  
+  <Tab title="Stop and remove containers">
+    ```bash
+    docker-compose down
+    ```
+    
+    Removes containers but keeps volumes and data.
+  </Tab>
+  
+  <Tab title="Complete cleanup">
+    ```bash
+    # Remove containers, volumes, and data
+    docker-compose down -v
+    
+    # Remove images too
+    docker-compose down -v --rmi all
+    ```
+    
+    <Warning>
+      This deletes ALL data including database, uploaded files, and user accounts!
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Updating the Application
+
+<Steps>
+  <Step title="Pull latest changes">
+    ```bash
+    git pull origin main
+    ```
+  </Step>
+  
+  <Step title="Rebuild images">
+    ```bash
+    docker-compose build --no-cache
+    ```
+  </Step>
+  
+  <Step title="Restart services">
+    ```bash
+    docker-compose down
+    docker-compose up -d
+    ```
+  </Step>
+  
+  <Step title="Run database migrations">
+    If schema changed:
+    ```bash
+    docker-compose exec backend alembic upgrade head
+    ```
+  </Step>
+</Steps>
+
+## Production Deployment
+
+For production deployment, see:
+
+<CardGroup cols={2}>
+  <Card title="Architecture Overview" icon="diagram-project" href="/deployment/architecture">
+    Understand the system architecture and components
+  </Card>
+  <Card title="Environment Variables" icon="gear" href="/deployment/environment-variables">
+    Configure your deployment with environment variables
+  </Card>
+  <Card title="Processing Workflow" icon="workflow" href="/guides/processing-workflow">
+    Learn the document processing workflow
+  </Card>
+  <Card title="AI Models" icon="brain" href="/guides/ai-models">
+    Choose and configure AI models
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<Check>Installation complete! Your Meta-Data Tag Generator is ready to use.</Check>
+
+Now you can:
+
+1. [Process your first document](/quickstart) - Follow the quick start guide
+2. [Configure API settings](/configuration) - Customize processing parameters
+3. [Explore the API](/api-reference) - Integrate with your applications
+
+<Tip>
+  Join our community for support and updates:
+  - GitHub Issues: Report bugs and request features
+  - Discussions: Ask questions and share use cases
+</Tip>

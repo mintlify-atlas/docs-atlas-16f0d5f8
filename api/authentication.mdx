@@ -1,0 +1,443 @@
+---
+title: API authentication
+description: Learn how to authenticate API requests using JWT tokens
+---
+
+The Meta-Data Tag Generator API uses **JWT (JSON Web Tokens)** for authentication. This guide explains how to obtain tokens and use them to authenticate your API requests.
+
+## Authentication Flow
+
+<Steps>
+  <Step title="Register or Login">
+    Create an account or log in to obtain JWT tokens
+  </Step>
+  <Step title="Store Tokens Securely">
+    Save the access token and refresh token in secure storage
+  </Step>
+  <Step title="Authenticate Requests">
+    Include the access token in the `Authorization` header
+  </Step>
+  <Step title="Refresh When Expired">
+    Use the refresh token to obtain a new access token
+  </Step>
+</Steps>
+
+## Public vs Protected Endpoints
+
+### Public Endpoints (No Authentication Required)
+
+These endpoints can be accessed without a JWT token:
+
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/login` - User login
+- `GET /api/health` - Health check
+- `GET /api/status` - Status check
+- `GET /` - API version info
+
+### Protected Endpoints (Authentication Required)
+
+All other endpoints require a valid JWT access token:
+
+- All `/api/single/*` endpoints
+- All `/api/batch/*` endpoints
+- `GET /api/auth/me` - Get current user
+- `POST /api/auth/refresh` - Refresh access token
+
+## Obtaining Tokens
+
+### 1. Register a New Account
+
+```bash
+curl -X POST http://localhost:8000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "secure_password_123",
+    "full_name": "John Doe"
+  }'
+```
+
+<Warning>
+Passwords must be at least 8 characters long. They are hashed using bcrypt before storage.
+</Warning>
+
+### 2. Login to Get Tokens
+
+```bash
+curl -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "secure_password_123"
+  }'
+```
+
+**Response:**
+```json
+{
+  "user": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "email": "user@example.com",
+    "full_name": "John Doe",
+    "is_active": true,
+    "is_verified": true,
+    "created_at": "2024-01-15T10:30:00Z"
+  },
+  "tokens": {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "token_type": "bearer",
+    "expires_in": 1800
+  }
+}
+```
+
+## Using Tokens in Requests
+
+### Authorization Header
+
+Include the access token in the `Authorization` header with the `Bearer` scheme:
+
+```bash
+curl -X POST http://localhost:8000/api/single/process \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -F "pdf_file=@document.pdf" \
+  -F 'config={"api_key":"sk-xxx","model_name":"openai/gpt-4o-mini","num_pages":3,"num_tags":8}'
+```
+
+### WebSocket Authentication
+
+For WebSocket connections, pass the token as a query parameter:
+
+```javascript
+const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...';
+const jobId = 'my-job-id';
+const ws = new WebSocket(`ws://localhost:8000/api/batch/ws/${jobId}?token=${token}`);
+```
+
+## Token Details
+
+### Access Token
+
+**Purpose**: Short-lived token for API requests  
+**Lifetime**: 30 minutes (1800 seconds)  
+**Algorithm**: HS256 (HMAC with SHA-256)
+
+**Payload Structure**:
+```json
+{
+  "sub": "user@example.com",
+  "user_id": "123e4567-e89b-12d3-a456-426614174000",
+  "type": "access",
+  "exp": 1704454800,
+  "iat": 1704453000
+}
+```
+
+### Refresh Token
+
+**Purpose**: Long-lived token to obtain new access tokens  
+**Lifetime**: 7 days  
+**Storage**: Hashed with SHA-256 in database
+
+<Info>
+Refresh tokens are single-use. When you refresh, you receive a new access token AND a new refresh token (token rotation).
+</Info>
+
+## Refreshing Tokens
+
+When your access token expires (after 30 minutes), use the refresh token to get a new access token:
+
+```bash
+curl -X POST http://localhost:8000/api/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }'
+```
+
+**Response:**
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 1800
+}
+```
+
+<Note>
+The old refresh token is invalidated and a new one is issued (token rotation for security).
+</Note>
+
+## Error Handling
+
+### 401 Unauthorized
+
+**Cause**: Missing or invalid access token
+
+```json
+{
+  "detail": "Could not validate credentials"
+}
+```
+
+**Solution**: Check that you're including the token in the `Authorization` header with the correct format.
+
+### 403 Forbidden
+
+**Cause**: Account is disabled or token is valid but user lacks permissions
+
+```json
+{
+  "detail": "Your account has been disabled"
+}
+```
+
+**Solution**: Contact support to reactivate your account.
+
+### Expired Token
+
+**Cause**: Access token has exceeded its 30-minute lifetime
+
+```json
+{
+  "detail": "Token has expired"
+}
+```
+
+**Solution**: Use the refresh token to obtain a new access token.
+
+## Implementation Examples
+
+<Tabs>
+  <Tab title="Python">
+    ```python
+    import requests
+    
+    class APIClient:
+        def __init__(self, base_url: str):
+            self.base_url = base_url
+            self.access_token = None
+            self.refresh_token = None
+        
+        def login(self, email: str, password: str):
+            response = requests.post(
+                f"{self.base_url}/api/auth/login",
+                json={"email": email, "password": password}
+            )
+            data = response.json()
+            self.access_token = data["tokens"]["access_token"]
+            self.refresh_token = data["tokens"]["refresh_token"]
+            return data["user"]
+        
+        def refresh_access_token(self):
+            response = requests.post(
+                f"{self.base_url}/api/auth/refresh",
+                json={"refresh_token": self.refresh_token}
+            )
+            data = response.json()
+            self.access_token = data["access_token"]
+            self.refresh_token = data["refresh_token"]
+        
+        def get_headers(self):
+            return {
+                "Authorization": f"Bearer {self.access_token}"
+            }
+        
+        def process_pdf(self, file_path: str, config: dict):
+            with open(file_path, 'rb') as f:
+                files = {'pdf_file': f}
+                data = {'config': json.dumps(config)}
+                response = requests.post(
+                    f"{self.base_url}/api/single/process",
+                    files=files,
+                    data=data,
+                    headers=self.get_headers()
+                )
+                if response.status_code == 401:
+                    # Token expired, refresh and retry
+                    self.refresh_access_token()
+                    response = requests.post(
+                        f"{self.base_url}/api/single/process",
+                        files=files,
+                        data=data,
+                        headers=self.get_headers()
+                    )
+                return response.json()
+    
+    # Usage
+    client = APIClient("http://localhost:8000")
+    client.login("user@example.com", "password")
+    result = client.process_pdf("document.pdf", {
+        "api_key": "sk-xxx",
+        "model_name": "openai/gpt-4o-mini",
+        "num_pages": 3,
+        "num_tags": 8
+    })
+    ```
+  </Tab>
+  
+  <Tab title="JavaScript">
+    ```javascript
+    class APIClient {
+      constructor(baseUrl) {
+        this.baseUrl = baseUrl;
+        this.accessToken = null;
+        this.refreshToken = null;
+      }
+      
+      async login(email, password) {
+        const response = await fetch(`${this.baseUrl}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const data = await response.json();
+        this.accessToken = data.tokens.access_token;
+        this.refreshToken = data.tokens.refresh_token;
+        return data.user;
+      }
+      
+      async refreshAccessToken() {
+        const response = await fetch(`${this.baseUrl}/api/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: this.refreshToken })
+        });
+        const data = await response.json();
+        this.accessToken = data.access_token;
+        this.refreshToken = data.refresh_token;
+      }
+      
+      getHeaders() {
+        return {
+          'Authorization': `Bearer ${this.accessToken}`
+        };
+      }
+      
+      async processPDF(file, config) {
+        const formData = new FormData();
+        formData.append('pdf_file', file);
+        formData.append('config', JSON.stringify(config));
+        
+        let response = await fetch(`${this.baseUrl}/api/single/process`, {
+          method: 'POST',
+          headers: this.getHeaders(),
+          body: formData
+        });
+        
+        if (response.status === 401) {
+          // Token expired, refresh and retry
+          await this.refreshAccessToken();
+          response = await fetch(`${this.baseUrl}/api/single/process`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: formData
+          });
+        }
+        
+        return response.json();
+      }
+    }
+    
+    // Usage
+    const client = new APIClient('http://localhost:8000');
+    await client.login('user@example.com', 'password');
+    const result = await client.processPDF(fileInput.files[0], {
+      api_key: 'sk-xxx',
+      model_name: 'openai/gpt-4o-mini',
+      num_pages: 3,
+      num_tags: 8
+    });
+    ```
+  </Tab>
+</Tabs>
+
+## Security Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Secure Storage" icon="lock">
+    Never store tokens in:
+    - URL parameters
+    - Browser localStorage (for sensitive apps)
+    - Unencrypted cookies
+    - Client-side code repositories
+    
+    Use:
+    - HTTP-only cookies (with SameSite)
+    - Secure session storage
+    - Encrypted mobile storage
+  </Card>
+  
+  <Card title="Token Rotation" icon="rotate">
+    The API implements automatic token rotation:
+    - New refresh token issued on each refresh
+    - Old refresh token is invalidated
+    - Prevents token replay attacks
+  </Card>
+  
+  <Card title="HTTPS Only" icon="shield">
+    In production:
+    - Always use HTTPS for API requests
+    - Never send tokens over HTTP
+    - Enable HSTS headers
+    - Use certificate pinning for mobile apps
+  </Card>
+  
+  <Card title="Token Expiration" icon="clock">
+    Monitor token expiration:
+    - Access tokens expire in 30 minutes
+    - Refresh tokens expire in 7 days
+    - Implement automatic refresh before expiration
+    - Handle expired tokens gracefully
+  </Card>
+</CardGroup>
+
+## Environment Variables
+
+Configure JWT settings in your deployment:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JWT_SECRET_KEY` | `your-super-secret-jwt-key-change-in-production` | Secret key for signing tokens |
+| `JWT_ALGORITHM` | `HS256` | Algorithm for token signing |
+| `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Access token lifetime in minutes |
+| `JWT_REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token lifetime in days |
+
+<Warning>
+**Change the default JWT secret key in production!** Use a long, random string (at least 32 characters).
+</Warning>
+
+Generate a secure secret key:
+```bash
+openssl rand -hex 32
+```
+
+## Token Verification
+
+You can verify and decode JWT tokens using online tools (for debugging only, never paste production tokens):
+
+- [jwt.io](https://jwt.io) - JWT decoder
+- [jwt-decode](https://www.npmjs.com/package/jwt-decode) - NPM package for client-side decoding
+
+<Warning>
+Token verification should be done server-side. Client-side decoding is for display purposes only and doesn't validate the signature.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Register Account" icon="user-plus" href="/api/auth/register">
+    Create a new user account
+  </Card>
+  <Card title="Login" icon="right-to-bracket" href="/api/auth/login">
+    Authenticate and get tokens
+  </Card>
+  <Card title="Process Documents" icon="file-pdf" href="/api/single/process">
+    Start processing PDFs
+  </Card>
+  <Card title="User Management" icon="gear" href="/api/auth/tokens">
+    Manage tokens and user info
+  </Card>
+</CardGroup>

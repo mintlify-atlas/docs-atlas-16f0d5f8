@@ -1,0 +1,355 @@
+---
+title: Environment Variables
+description: Complete reference for all environment variables in Meta-Data Tag Generator
+---
+
+## Overview
+
+This page documents all environment variables used across the application. Variables can be set in `docker-compose.yml` or in a `.env` file.
+
+## Backend Environment Variables
+
+### Database Settings
+
+<ParamField path="DATABASE_URL" type="string" default="postgresql://metatag:metatag_secret@postgres:5432/metatag_db">
+  Complete PostgreSQL connection string. Overrides individual DB_* variables if set.
+</ParamField>
+
+<ParamField path="DB_HOST" type="string" default="postgres">
+  PostgreSQL server hostname or IP address.
+</ParamField>
+
+<ParamField path="DB_PORT" type="integer" default="5432">
+  PostgreSQL server port.
+</ParamField>
+
+<ParamField path="DB_USER" type="string" default="metatag">
+  PostgreSQL database username.
+</ParamField>
+
+<ParamField path="DB_PASSWORD" type="string" default="metatag_secret" required>
+  PostgreSQL database password. **Change in production!**
+</ParamField>
+
+<ParamField path="DB_NAME" type="string" default="metatag_db">
+  PostgreSQL database name.
+</ParamField>
+
+### MinIO Object Storage
+
+<ParamField path="MINIO_ENDPOINT" type="string" default="minio:9000">
+  MinIO server endpoint (without http://). Use `host:port` format.
+</ParamField>
+
+<ParamField path="MINIO_ACCESS_KEY" type="string" default="minioadmin" required>
+  MinIO access key. **Change in production!**
+</ParamField>
+
+<ParamField path="MINIO_SECRET_KEY" type="string" default="minioadmin123" required>
+  MinIO secret key. **Change in production!**
+</ParamField>
+
+<ParamField path="MINIO_BUCKET" type="string" default="metatag-files">
+  MinIO bucket name for storing uploaded files and generated files.
+</ParamField>
+
+<ParamField path="MINIO_SECURE" type="boolean" default="false">
+  Use HTTPS for MinIO connection. Set to `true` for production.
+</ParamField>
+
+### Redis Settings
+
+<ParamField path="REDIS_URL" type="string" default="redis://redis:6379/0">
+  Redis connection URL. Used for job state persistence and pub/sub messaging.
+</ParamField>
+
+### JWT Authentication
+
+<ParamField path="JWT_SECRET_KEY" type="string" default="your-super-secret-jwt-key-change-in-production" required>
+  Secret key for signing JWT tokens. **MUST change in production!** Use a strong random string.
+</ParamField>
+
+<ParamField path="JWT_ALGORITHM" type="string" default="HS256">
+  Algorithm for JWT signing. Options: `HS256`, `HS384`, `HS512`.
+</ParamField>
+
+<ParamField path="JWT_ACCESS_TOKEN_EXPIRE_MINUTES" type="integer" default="30">
+  Access token expiration time in minutes.
+</ParamField>
+
+<ParamField path="JWT_REFRESH_TOKEN_EXPIRE_DAYS" type="integer" default="7">
+  Refresh token expiration time in days.
+</ParamField>
+
+### Application Settings
+
+<ParamField path="PYTHONUNBUFFERED" type="string" default="1">
+  Ensures Python output is sent straight to terminal without buffering.
+</ParamField>
+
+<ParamField path="APP_NAME" type="string" default="Document Meta-Tagging API">
+  Application name displayed in API documentation.
+</ParamField>
+
+<ParamField path="DEBUG" type="boolean" default="false">
+  Enable debug mode. Set to `true` only in development.
+</ParamField>
+
+### AI/LLM Settings
+
+<ParamField path="OPENROUTER_BASE_URL" type="string" default="https://openrouter.ai/api/v1">
+  OpenRouter API base URL for LLM requests.
+</ParamField>
+
+<ParamField path="DEFAULT_MODEL" type="string" default="openai/gpt-4o-mini">
+  Default LLM model to use. Options:
+  - `openai/gpt-4o-mini` - Fast & cheap
+  - `google/gemini-2.0-flash-exp` - Faster
+  - `meta-llama/llama-2-70b-chat` - Open source
+</ParamField>
+
+<ParamField path="API_CONNECT_TIMEOUT" type="integer" default="30">
+  Connection timeout for API requests in seconds.
+</ParamField>
+
+<ParamField path="API_READ_TIMEOUT" type="integer" default="90">
+  Read timeout for long-running API requests in seconds.
+</ParamField>
+
+<ParamField path="API_MAX_RETRIES" type="integer" default="3">
+  Maximum retry attempts for failed API requests.
+</ParamField>
+
+<ParamField path="API_RETRY_DELAY" type="number" default="1.0">
+  Initial retry delay in seconds (uses exponential backoff).
+</ParamField>
+
+### Processing Limits
+
+<ParamField path="MAX_PDF_SIZE_MB" type="integer" default="50">
+  Maximum allowed PDF file size in megabytes.
+</ParamField>
+
+<ParamField path="MAX_PAGES_TO_EXTRACT" type="integer" default="10">
+  Maximum number of pages to extract from PDF documents.
+</ParamField>
+
+<ParamField path="MAX_TAGS" type="integer" default="15">
+  Maximum number of tags to generate per document.
+</ParamField>
+
+<ParamField path="MIN_TAGS" type="integer" default="3">
+  Minimum number of tags to generate per document.
+</ParamField>
+
+<ParamField path="MAX_WORDS_FOR_AI" type="integer" default="2000">
+  Maximum words to send to AI model for processing.
+</ParamField>
+
+### Batch Processing
+
+<ParamField path="BATCH_RETRY_MAX_ATTEMPTS" type="integer" default="3">
+  Maximum retries per document before skipping in batch processing.
+</ParamField>
+
+<ParamField path="BATCH_RETRY_DELAY_MULTIPLIER" type="number" default="2.0">
+  Exponential backoff multiplier for batch retries.
+</ParamField>
+
+<ParamField path="BATCH_MIN_DELAY_BETWEEN_REQUESTS" type="number" default="3.0">
+  Minimum delay between batch requests in seconds (for rate limiting).
+</ParamField>
+
+<ParamField path="BATCH_MAX_DELAY_BETWEEN_REQUESTS" type="number" default="120.0">
+  Maximum delay between batch requests in seconds.
+</ParamField>
+
+### AWS Settings (Optional)
+
+<ParamField path="AWS_ACCESS_KEY_ID" type="string" optional>
+  AWS access key for S3 integration. Optional if using MinIO.
+</ParamField>
+
+<ParamField path="AWS_SECRET_ACCESS_KEY" type="string" optional>
+  AWS secret access key for S3 integration. Optional if using MinIO.
+</ParamField>
+
+<ParamField path="AWS_REGION" type="string" default="us-east-1">
+  AWS region for S3 bucket. Only used if AWS credentials are provided.
+</ParamField>
+
+## Frontend Environment Variables
+
+<ParamField path="NEXT_PUBLIC_BACKEND_URL" type="string" default="http://backend:8000">
+  Backend API URL. Must be accessible from the browser for client-side requests.
+  
+  For production, use your domain:
+  ```
+  NEXT_PUBLIC_BACKEND_URL=https://api.yourdomain.com
+  ```
+</ParamField>
+
+<ParamField path="NEXT_TELEMETRY_DISABLED" type="string" default="1">
+  Disables Next.js telemetry collection. Set automatically in Dockerfile.
+</ParamField>
+
+<ParamField path="NODE_ENV" type="string" default="production">
+  Node environment. Set to `production` or `development`.
+</ParamField>
+
+<ParamField path="PORT" type="integer" default="3000">
+  Internal port the Next.js app runs on inside the container.
+</ParamField>
+
+<ParamField path="HOSTNAME" type="string" default="0.0.0.0">
+  Hostname to bind the server to. Use `0.0.0.0` for Docker.
+</ParamField>
+
+## PostgreSQL Environment Variables
+
+<ParamField path="POSTGRES_USER" type="string" default="metatag">
+  PostgreSQL superuser name created on initialization.
+</ParamField>
+
+<ParamField path="POSTGRES_PASSWORD" type="string" default="metatag_secret" required>
+  PostgreSQL superuser password. **Change in production!**
+</ParamField>
+
+<ParamField path="POSTGRES_DB" type="string" default="metatag_db">
+  Default database created on initialization.
+</ParamField>
+
+## MinIO Environment Variables
+
+<ParamField path="MINIO_ROOT_USER" type="string" default="minioadmin" required>
+  MinIO root username. **Change in production!**
+</ParamField>
+
+<ParamField path="MINIO_ROOT_PASSWORD" type="string" default="minioadmin123" required>
+  MinIO root password. Must be at least 8 characters. **Change in production!**
+</ParamField>
+
+## Production Configuration
+
+### Security Checklist
+
+Before deploying to production, ensure you change these critical values:
+
+```bash
+# Generate strong secrets
+openssl rand -hex 32  # For JWT_SECRET_KEY
+openssl rand -base64 24  # For passwords
+```
+
+**Required changes:**
+- ✅ `JWT_SECRET_KEY` - Use strong random string
+- ✅ `DB_PASSWORD` - Use strong password
+- ✅ `POSTGRES_PASSWORD` - Match DB_PASSWORD
+- ✅ `MINIO_ROOT_USER` - Change from default
+- ✅ `MINIO_ROOT_PASSWORD` - Use strong password (8+ chars)
+- ✅ `MINIO_ACCESS_KEY` - Match MINIO_ROOT_USER
+- ✅ `MINIO_SECRET_KEY` - Match MINIO_ROOT_PASSWORD
+- ✅ `NEXT_PUBLIC_BACKEND_URL` - Use production domain
+
+### Example Production .env
+
+```bash
+# Database
+DATABASE_URL=postgresql://prod_user:STRONG_PASSWORD_HERE@postgres:5432/metatag_db
+DB_USER=prod_user
+DB_PASSWORD=STRONG_PASSWORD_HERE
+DB_NAME=metatag_db
+
+# MinIO
+MINIO_ROOT_USER=prod_minio_admin
+MINIO_ROOT_PASSWORD=STRONG_PASSWORD_8_CHARS_MIN
+MINIO_ACCESS_KEY=prod_minio_admin
+MINIO_SECRET_KEY=STRONG_PASSWORD_8_CHARS_MIN
+MINIO_SECURE=true
+
+# JWT
+JWT_SECRET_KEY=GENERATED_WITH_OPENSSL_RAND_HEX_32
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES=15
+
+# Frontend
+NEXT_PUBLIC_BACKEND_URL=https://api.yourdomain.com
+
+# Application
+DEBUG=false
+```
+
+### Environment File Location
+
+Create a `.env` file in the project root (same directory as `docker-compose.yml`):
+
+```bash
+# Project structure
+.
+├── docker-compose.yml
+├── .env                    # Environment variables here
+├── backend/
+├── frontend/
+└── nginx/
+```
+
+Docker Compose will automatically load variables from `.env`.
+
+### Override for Development
+
+Create `docker-compose.override.yml` for local development:
+
+```yaml
+services:
+  backend:
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=debug
+  
+  frontend:
+    environment:
+      - NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+```
+
+This file is git-ignored and won't affect production.
+
+## Validation
+
+Verify environment variables are set correctly:
+
+```bash
+# Check backend variables
+docker-compose exec backend env | grep -E "DB_|MINIO_|JWT_|REDIS_"
+
+# Check frontend variables
+docker-compose exec frontend env | grep NEXT_PUBLIC
+
+# Check PostgreSQL variables
+docker-compose exec postgres env | grep POSTGRES_
+```
+
+## Troubleshooting
+
+### Variables not taking effect
+
+```bash
+# Recreate containers to pick up new env vars
+docker-compose up -d --force-recreate
+
+# Or rebuild if using build-time variables
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+### Connection refused errors
+
+Ensure service hostnames match Docker network names:
+- ✅ `DB_HOST=postgres` (service name)
+- ❌ `DB_HOST=localhost` (wrong in Docker)
+
+### MinIO authentication fails
+
+Ensure backend MinIO credentials match container:
+```bash
+MINIO_ROOT_USER == MINIO_ACCESS_KEY
+MINIO_ROOT_PASSWORD == MINIO_SECRET_KEY
+```

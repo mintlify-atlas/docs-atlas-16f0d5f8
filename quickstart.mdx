@@ -1,80 +1,522 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quick Start
+description: Process your first document in under 5 minutes
 ---
 
-## Get started in three steps
+## Overview
 
-Get your documentation site running locally and make your first customization.
+This guide will walk you through processing your first document with the Meta-Data Tag Generator. You'll learn how to:
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 2: Deploy your changes
-
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
-
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
-
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
-
-### Step 3: Go live
-
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
-
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+- Start the application
+- Configure AI settings
+- Process a single document
+- Understand the results
+- Try batch processing
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  This guide assumes you've already completed the [installation](/installation). If not, head there first!
 </Note>
+
+## Prerequisites
+
+Before you begin, make sure you have:
+
+<Check>OpenRouter API key ([Get one free](https://openrouter.ai/keys))</Check>
+<Check>Docker Compose installed and running</Check>
+<Check>A PDF document to test with</Check>
+
+## Step 1: Start the Application
+
+<Steps>
+  <Step title="Navigate to project directory">
+    ```bash
+    cd /path/to/Meta-Data-Tag-Generator/source
+    ```
+  </Step>
+  
+  <Step title="Start all services">
+    ```bash
+    docker-compose up -d
+    ```
+    
+    This starts:
+    - **Backend API** (port 8000)
+    - **Frontend** (port 3001)
+    - **PostgreSQL** (port 5432)
+    - **MinIO** (ports 9000, 9001)
+    - **Redis** (port 6379)
+  </Step>
+  
+  <Step title="Verify services are running">
+    ```bash
+    docker-compose ps
+    ```
+    
+    All services should show as "healthy" or "running".
+  </Step>
+  
+  <Step title="Check API health">
+    ```bash
+    curl http://localhost:8000/api/health
+    ```
+    
+    Expected response:
+    ```json
+    {
+      "status": "healthy",
+      "version": "2.0.0",
+      "message": "Document Meta-Tagging API is running"
+    }
+    ```
+  </Step>
+</Steps>
+
+## Step 2: Access the Web Interface
+
+Open your browser and navigate to:
+
+```
+http://localhost:3001
+```
+
+You should see the Meta-Data Tag Generator interface with two main sections:
+- **Single Upload**: Process one document at a time
+- **Batch Processing**: Process multiple documents from CSV
+
+## Step 3: Configure AI Settings
+
+Before processing documents, you need to configure the AI tagging settings.
+
+<Steps>
+  <Step title="Locate the Configuration Panel">
+    On the main page, find the "Configuration" section in the sidebar.
+  </Step>
+  
+  <Step title="Enter your OpenRouter API Key">
+    ```plaintext
+    API Key: sk-or-v1-...
+    ```
+    
+    <Tip>
+      Don't have an API key? Get one free at [OpenRouter](https://openrouter.ai/keys). The free tier includes limited requests - add credits for production use.
+    </Tip>
+  </Step>
+  
+  <Step title="Select AI Model">
+    Choose from available models:
+    
+    | Model | Speed | Cost | Best For |
+    |-------|-------|------|----------|
+    | `openai/gpt-4o-mini` | Fast | Low | General documents |
+    | `google/gemini-flash-1.5` | Fastest | Lowest | High-volume processing |
+    | `anthropic/claude-3-haiku` | Fast | Low | Complex documents |
+    | `openai/gpt-4o` | Slower | Higher | Maximum quality |
+    
+    <Note>
+      **Recommended for getting started**: `openai/gpt-4o-mini` offers the best balance of speed, cost, and quality.
+    </Note>
+  </Step>
+  
+  <Step title="Configure Processing Settings">
+    - **Number of Pages to Extract**: `3` (default, processes first 3 pages)
+    - **Number of Tags**: `8` (default, generates 8 metadata tags)
+    
+    <Info>
+      Processing more pages increases accuracy but also increases API costs and processing time. For most documents, 3 pages is sufficient.
+    </Info>
+  </Step>
+</Steps>
+
+## Step 4: Process Your First Document
+
+Now let's process a document! You can use either a file upload or a URL.
+
+<Tabs>
+  <Tab title="Upload a File">
+    <Steps>
+      <Step title="Select a PDF file">
+        Click "Choose File" or drag and drop a PDF into the upload area.
+        
+        <Check>Maximum file size: 50MB</Check>
+        <Check>Supported format: PDF only</Check>
+      </Step>
+      
+      <Step title="Preview the document">
+        Once uploaded, you'll see a PDF preview on the right side of the screen.
+      </Step>
+      
+      <Step title="Click 'Process Document'">
+        The system will:
+        1. Detect if the document is scanned or digital
+        2. Extract text using the optimal method
+        3. Send text to AI for tag generation
+        4. Apply any exclusion filters
+        5. Return structured results
+      </Step>
+      
+      <Step title="View results">
+        Processing typically takes **2-15 seconds** depending on:
+        - Document type (digital vs scanned)
+        - Number of pages
+        - AI model selected
+      </Step>
+    </Steps>
+  </Tab>
+  
+  <Tab title="Process from URL">
+    <Steps>
+      <Step title="Enter a PDF URL">
+        In the "PDF URL" field, paste a publicly accessible PDF URL:
+        
+        ```plaintext
+        https://example.com/document.pdf
+        ```
+        
+        Supported URL types:
+        - Direct PDF URLs
+        - CloudFront URLs
+        - S3 public URLs
+        - Government/institutional portals
+      </Step>
+      
+      <Step title="Validate URL">
+        The system automatically validates the URL and shows a preview if accessible.
+        
+        <Warning>
+          The URL must be publicly accessible (no authentication required). For S3, ensure the bucket has public read permissions or use signed URLs.
+        </Warning>
+      </Step>
+      
+      <Step title="Process the document">
+        Click "Process Document" - the system will:
+        1. Download the PDF (60-second timeout)
+        2. Extract text
+        3. Generate tags
+        4. Return results
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Step 5: Understanding the Results
+
+After processing completes, you'll see detailed results:
+
+```json
+{
+  "success": true,
+  "document_title": "Annual Report 2023-24",
+  "tags": [
+    "ministry social justice empowerment",
+    "scheduled castes welfare",
+    "annual report 2023 24",
+    "national safai karamcharis finance",
+    "scholarship scheme",
+    "financial assistance",
+    "budget allocation",
+    "performance indicators"
+  ],
+  "extracted_text_preview": "Ministry of Social Justice and Empowerment\nAnnual Report 2023-24...",
+  "processing_time": 3.45,
+  "is_scanned": false,
+  "extraction_method": "pypdf2",
+  "ocr_confidence": null
+}
+```
+
+### Result Fields Explained
+
+<ResponseField name="tags" type="array">
+  Generated metadata tags in priority order:
+  - **Names**: Specific entities (e.g., "ministry social justice empowerment")
+  - **Subjects**: Topics and domains (e.g., "scheduled castes welfare")
+  - **Actions**: Document purpose (e.g., "annual report 2023 24")
+</ResponseField>
+
+<ResponseField name="extraction_method" type="string">
+  Method used for text extraction:
+  - `pypdf2`: Digital PDF (fastest)
+  - `tesseract_ocr`: Scanned PDF with Tesseract
+  - `easyocr`: Complex scripts with EasyOCR
+</ResponseField>
+
+<ResponseField name="is_scanned" type="boolean">
+  Whether the document is scanned (requires OCR) or digital (text-based)
+</ResponseField>
+
+<ResponseField name="ocr_confidence" type="number">
+  OCR confidence score (0-100) when using Tesseract. Lower scores trigger EasyOCR fallback.
+</ResponseField>
+
+<ResponseField name="processing_time" type="number">
+  Total processing time in seconds including text extraction and AI generation
+</ResponseField>
+
+## Step 6: Using Exclusion Lists (Optional)
+
+Exclusion lists help filter out generic terms that appear frequently across documents.
+
+<Steps>
+  <Step title="Create an exclusion list file">
+    Create a text file with terms to exclude (one per line):
+    
+    ```txt exclusion-list.txt
+    # Government organizations (comments start with #)
+    government-india
+    ministry-of-social-justice
+    government-of-india
+    
+    # Generic document types
+    annual-report
+    newsletter
+    policy-document
+    
+    # Overly generic terms
+    empowerment
+    welfare
+    scheme
+    ```
+  </Step>
+  
+  <Step title="Upload the exclusion file">
+    In the configuration panel, click "Upload Exclusion List" and select your file.
+    
+    <Check>Supported formats: .txt, .pdf</Check>
+    <Check>Format: One term per line or comma-separated</Check>
+  </Step>
+  
+  <Step title="Process with filtering">
+    When you process a document, the system will:
+    1. Instruct the AI to avoid excluded terms
+    2. Filter any excluded terms that slip through
+    3. Request additional tags to maintain the target count
+    
+    <Info>
+      If you request 8 tags and 2 are filtered, the system ensures you still get 8 final tags.
+    </Info>
+  </Step>
+</Steps>
+
+## Step 7: Try Batch Processing
+
+Process multiple documents at once using CSV input.
+
+<Steps>
+  <Step title="Navigate to Batch Processing">
+    Click the "Batch Processing" tab in the navigation.
+  </Step>
+  
+  <Step title="Download CSV Template">
+    Click "Download Template" to get a sample CSV:
+    
+    ```csv
+    title,description,file_source_type,file_path,publishing_date,file_size
+    "Training Manual","PMSPECIAL training document",url,https://example.com/doc1.pdf,2025-01-15,1.2MB
+    "Annual Report 2023","Ministry annual report",url,https://example.com/doc2.pdf,2023-12-31,2.5MB
+    ```
+  </Step>
+  
+  <Step title="Prepare your CSV">
+    **Required columns**:
+    - `title`: Document title
+    - `file_source_type`: `url`, `s3`, or `local`
+    - `file_path`: URL or path to the PDF
+    
+    **Optional columns**:
+    - `description`: Document description
+    - `publishing_date`: Publication date
+    - `file_size`: File size
+  </Step>
+  
+  <Step title="Upload and process">
+    1. Upload your CSV file
+    2. Map columns if needed
+    3. Click "Start Processing"
+    4. Watch real-time progress via WebSocket updates
+    
+    <Info>
+      Batch processing includes intelligent rate limiting to avoid API throttling. Large batches are processed sequentially with exponential backoff.
+    </Info>
+  </Step>
+  
+  <Step title="Export results">
+    Download results as CSV with all metadata:
+    - Original document info
+    - Generated tags
+    - Extraction method
+    - Processing time
+    - Any errors
+  </Step>
+</Steps>
+
+## Common Issues & Solutions
+
+<AccordionGroup>
+  <Accordion title="API Authentication Error">
+    **Error**: `Invalid API key. Please check your OpenRouter API key.`
+    
+    **Solution**:
+    - Verify your API key is correct (starts with `sk-or-v1-`)
+    - Check if your API key has available credits
+    - Visit [OpenRouter Keys](https://openrouter.ai/keys) to regenerate
+  </Accordion>
+  
+  <Accordion title="Rate Limit Errors">
+    **Error**: `RATE_LIMITED: OpenRouter free tier limit hit`
+    
+    **Solution**:
+    - Free tier has strict rate limits
+    - Add credits to your OpenRouter account: [Billing](https://openrouter.ai/account/billing/overview)
+    - For batch processing, the system automatically adds delays
+    - Reduce concurrent requests
+  </Accordion>
+  
+  <Accordion title="OCR Produces Gibberish">
+    **Issue**: Extracted text contains nonsensical characters
+    
+    **Solution**:
+    - Document may be very low quality - try rescanning at higher DPI
+    - For complex Indian scripts, the system automatically falls back to EasyOCR
+    - Check OCR confidence score - values below 60% trigger EasyOCR
+  </Accordion>
+  
+  <Accordion title="Document Processing Timeout">
+    **Error**: Processing takes too long or times out
+    
+    **Solution**:
+    - Reduce `num_pages` to 1-2 for faster processing
+    - Large scanned PDFs take longer (10-30 seconds)
+    - EasyOCR downloads models on first use (one-time delay)
+    - Check Docker resource limits (increase RAM to 8GB for OCR)
+  </Accordion>
+  
+  <Accordion title="WebSocket Connection Failed">
+    **Issue**: Real-time progress not showing in batch processing
+    
+    **Solution**:
+    - Check if Redis is running: `docker-compose ps redis`
+    - Verify WebSocket endpoint is accessible
+    - Check browser console for connection errors
+    - Ensure no firewall blocking WebSocket connections
+  </Accordion>
+</AccordionGroup>
+
+## Performance Tips
+
+<CardGroup cols={2}>
+  <Card title="For Speed" icon="bolt">
+    - Use `google/gemini-flash-1.5` model
+    - Process only first 1-2 pages
+    - Use digital PDFs when possible
+    - Reduce number of tags to 5
+  </Card>
+  
+  <Card title="For Quality" icon="star">
+    - Use `openai/gpt-4o` or `anthropic/claude-3-opus`
+    - Process 3-5 pages
+    - Use exclusion lists to filter noise
+    - Request 10-12 tags for more options
+  </Card>
+  
+  <Card title="For Cost" icon="coins">
+    - Use `google/gemini-flash-1.5` (lowest cost)
+    - Process 1-2 pages only
+    - Batch process to amortize overhead
+    - Use smaller `num_tags` values
+  </Card>
+  
+  <Card title="For Accuracy" icon="bullseye">
+    - Ensure documents are high quality
+    - For scanned docs, use 300+ DPI
+    - Include document descriptions
+    - Use language-specific models if available
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={3}>
+  <Card
+    title="API Integration"
+    icon="code"
+    href="/api/overview"
+  >
+    Integrate with your applications using the REST API
+  </Card>
+  <Card
+    title="Features Deep Dive"
+    icon="book"
+    href="/features/batch-processing"
+  >
+    Learn about advanced features like exclusion lists and multilingual support
+  </Card>
+  <Card
+    title="Deployment Guide"
+    icon="cloud"
+    href="/deployment/docker-compose"
+  >
+    Deploy to production on AWS, GCP, or your own infrastructure
+  </Card>
+</CardGroup>
+
+## Example: Processing a Government Document
+
+Here's a complete example processing an Indian government document:
+
+<CodeGroup>
+```bash cURL
+curl -X POST http://localhost:8000/api/single/process \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -F "pdf_url=https://socialjustice.gov.in/writereaddata/UploadFile/AnnualReport2023.pdf" \
+  -F 'config={"api_key":"sk-or-v1-...","model_name":"openai/gpt-4o-mini","num_pages":3,"num_tags":8}'
+```
+
+```python Python
+import requests
+
+response = requests.post(
+    "http://localhost:8000/api/single/process",
+    headers={"Authorization": f"Bearer {jwt_token}"},
+    data={
+        "pdf_url": "https://socialjustice.gov.in/writereaddata/UploadFile/AnnualReport2023.pdf",
+        "config": json.dumps({
+            "api_key": "sk-or-v1-...",
+            "model_name": "openai/gpt-4o-mini",
+            "num_pages": 3,
+            "num_tags": 8
+        })
+    }
+)
+
+result = response.json()
+print(f"Tags: {result['tags']}")
+print(f"Method: {result['extraction_method']}")
+print(f"Time: {result['processing_time']}s")
+```
+
+```javascript JavaScript
+const formData = new FormData();
+formData.append('pdf_url', 'https://socialjustice.gov.in/writereaddata/UploadFile/AnnualReport2023.pdf');
+formData.append('config', JSON.stringify({
+  api_key: 'sk-or-v1-...',
+  model_name: 'openai/gpt-4o-mini',
+  num_pages: 3,
+  num_tags: 8
+}));
+
+const response = await fetch('http://localhost:8000/api/single/process', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${jwtToken}`
+  },
+  body: formData
+});
+
+const result = await response.json();
+console.log('Tags:', result.tags);
+console.log('Method:', result.extraction_method);
+console.log('Time:', result.processing_time, 's');
+```
+</CodeGroup>
+
+<Check>Congratulations! You've successfully processed your first document with the Meta-Data Tag Generator.</Check>

@@ -1,0 +1,670 @@
+---
+title: Exclusion List Filtering
+description: Filter out common and generic terms from AI-generated tags using exclusion lists with 2-layer filtering and guaranteed tag counts
+icon: filter
+---
+
+## Overview
+
+Exclusion lists allow you to **filter out common or generic terms** that appear repeatedly across documents. This improves ElasticSearch searchability by ensuring tags are specific and unique to each document.
+
+<Info>
+The system uses a **2-layer approach**: AI is instructed to avoid excluded terms during generation, and post-processing filters any that slip through.
+</Info>
+
+## Why Use Exclusion Lists?
+
+### Problem: Generic Tags Reduce Searchability
+
+Imagine processing 1000 government documents. Without exclusion filtering:
+
+<CodeGroup>
+```json Document 1 Tags
+[
+  "government-of-india",
+  "ministry-of-social-justice",
+  "annual-report",
+  "policy-document",
+  "pmkvy",
+  "skill-development"
+]
+```
+
+```json Document 2 Tags
+[
+  "government-of-india",
+  "ministry-of-social-justice",
+  "newsletter",
+  "quarterly-update",
+  "scholarship-program",
+  "budget-allocation"
+]
+```
+</CodeGroup>
+
+**Issue**: Tags like `"government-of-india"` and `"ministry-of-social-justice"` appear in every document, making them useless for search filtering.
+
+### Solution: Exclusion Filtering
+
+With an exclusion list:
+
+```txt exclusion-list.txt
+# Generic organizations
+government-of-india
+ministry-of-social-justice
+
+# Generic document types
+annual-report
+newsletter
+policy-document
+```
+
+**Result**:
+
+<CodeGroup>
+```json Document 1 Tags (Filtered)
+[
+  "pmkvy",
+  "skill-development",
+  "vocational-training",
+  "certification-program",
+  "job-placement"
+]
+```
+
+```json Document 2 Tags (Filtered)
+[
+  "scholarship-program",
+  "budget-allocation",
+  "financial-assistance",
+  "student-welfare",
+  "education-funding"
+]
+```
+</CodeGroup>
+
+Now each document has **unique, searchable tags** that distinguish it from others.
+
+## How It Works
+
+<Steps>
+  <Step title="Upload Exclusion File">
+    Upload a `.txt` or `.pdf` file containing terms to exclude.
+    
+    **Supported Formats**:
+    - **`.txt`**: Plain text file (recommended)
+    - **`.pdf`**: PDF containing exclusion terms
+    
+    **Text Encoding**:
+    - Auto-detected with `chardet`
+    - Supports UTF-8, Latin-1, CP1252, ISO-8859-1
+    - Falls back to UTF-8 with error replacement
+  </Step>
+  
+  <Step title="Parse Exclusion Terms">
+    The system parses the file and extracts terms:
+    
+    ```python
+    # Line-by-line format
+    government-of-india
+    ministry-of-social-justice
+    annual-report
+    
+    # Comma-separated format
+    scheme, yojana, program, initiative
+    
+    # Mixed format
+    pmkvy, skill-development
+    training-manual
+    newsletter, circular
+    
+    # Comments (ignored)
+    # This is a comment
+    some-term  # Inline comment not supported — whole line ignored
+    ```
+    
+    **Parsing Rules**:
+    - Lines starting with `#` are ignored
+    - Empty lines are ignored
+    - Terms are converted to lowercase
+    - Whitespace is trimmed
+    - Commas split terms on same line
+  </Step>
+  
+  <Step title="Pre-Generation Filtering (Layer 1)">
+    The AI is instructed to avoid excluded terms in its system prompt:
+    
+    ```python
+    prompt = f"""
+    Generate {num_tags} metadata tags for this document.
+    
+    **IMPORTANT**: Do NOT use these terms (they are too generic):
+    {', '.join(exclusion_words)}
+    
+    Generate unique, specific tags that distinguish this document.
+    """
+    ```
+    
+    **Example**:
+    ```
+    **IMPORTANT**: Do NOT use these terms:
+    government-of-india, ministry-of-social-justice, annual-report, 
+    newsletter, policy-document
+    ```
+  </Step>
+  
+  <Step title="Post-Processing Filtering (Layer 2)">
+    After AI generates tags, any excluded terms that slipped through are removed:
+    
+    ```python
+    # AI generated these tags
+    raw_tags = [
+        "pmkvy",
+        "skill-development",
+        "government-of-india",  # Should be excluded!
+        "vocational-training",
+        "ministry-of-social-justice"  # Should be excluded!
+    ]
+    
+    # Filter excluded terms
+    filtered_tags = [
+        tag for tag in raw_tags 
+        if tag.lower() not in exclusion_set
+    ]
+    
+    # Result
+    filtered_tags = [
+        "pmkvy",
+        "skill-development",
+        "vocational-training"
+    ]
+    ```
+  </Step>
+  
+  <Step title="Guaranteed Tag Count">
+    If filtering removes tags, system requests extras from AI to maintain target count:
+    
+    ```python
+    if requested_tags == 5 and exclusion_words:
+        # Request 10 tags to ensure 5 remain after filtering
+        ai_tag_count = requested_tags * 2
+    ```
+    
+    **Example**:
+    - User requests: 5 tags
+    - AI generates: 10 tags (with instruction to avoid excluded terms)
+    - Post-filtering removes: 2 tags
+    - Final result: 8 tags (more than requested minimum)
+    
+    <Note>
+    This ensures you always get **at least** your requested number of tags, even if some are filtered out.
+    </Note>
+  </Step>
+</Steps>
+
+## File Formats
+
+### Text File (`.txt`)
+
+**Recommended Format**:
+
+```txt exclusion-list.txt
+# Common government organizations (comments start with #)
+government-india
+ministry-of-social-justice
+social-justice
+department-of-empowerment
+
+# Generic document types
+annual-report
+newsletter
+policy-document
+circular
+notification
+
+# Overly generic terms
+empowerment
+constitutional-provisions
+government-scheme
+public-welfare
+
+# Comma-separated (same line)
+scheme, yojana, program, initiative, mission
+```
+
+**Parsing**:
+```python
+lines = text.split('\n')
+for line in lines:
+    line = line.strip()
+    
+    # Skip comments and empty lines
+    if not line or line.startswith('#'):
+        continue
+    
+    # Split by comma if present
+    if ',' in line:
+        terms = [t.strip().lower() for t in line.split(',')]
+        exclusion_set.update(terms)
+    else:
+        exclusion_set.add(line.lower())
+```
+
+### PDF File (`.pdf`)
+
+**Use Case**: When exclusion terms are in a PDF document
+
+**Process**:
+1. Extract text from PDF (uses same OCR pipeline as document processing)
+2. Parse extracted text with same rules as `.txt` files
+3. Filter comments and empty lines
+
+**Example PDF Content**:
+```
+Exclusion List for Government Documents
+
+Common Organizations:
+- Government of India
+- Ministry of Social Justice
+- Department of Empowerment
+
+Generic Terms:
+- Annual Report
+- Policy Document
+- Circular
+```
+
+**Parsed Result**:
+```python
+{
+    'government-of-india',
+    'ministry-of-social-justice',
+    'department-of-empowerment',
+    'annual-report',
+    'policy-document',
+    'circular'
+}
+```
+
+## Encoding Detection
+
+### Auto-Detection with chardet
+
+```python
+import chardet
+
+detected = chardet.detect(file_bytes)
+encoding = detected['encoding']        # e.g., 'utf-8'
+confidence = detected['confidence']    # e.g., 0.95
+
+if confidence > 0.7:
+    text = file_bytes.decode(encoding)
+```
+
+**Supported Encodings**:
+- UTF-8
+- Latin-1 (ISO-8859-1)
+- CP1252 (Windows-1252)
+- ISO-8859-1
+
+### Fallback Strategy
+
+```python
+# Try common encodings in order
+for encoding in ['utf-8', 'latin-1', 'cp1252', 'iso-8859-1']:
+    try:
+        text = file_bytes.decode(encoding)
+        break
+    except UnicodeDecodeError:
+        continue
+
+# Last resort: UTF-8 with error replacement
+text = file_bytes.decode('utf-8', errors='replace')
+```
+
+## API Usage
+
+### Single Document Processing
+
+**Endpoint**: `POST /api/single/process`
+
+**Form Data**:
+```python
+formData = {
+    'pdf_file': pdf_file,
+    'config': JSON.stringify({
+        'api_key': '...',
+        'model_name': 'google/gemini-flash-1.5',
+        'num_tags': 8,
+        'num_pages': 3,
+        'exclusion_words': []  # Can also be set here
+    }),
+    'exclusion_file': exclusion_file  # .txt or .pdf
+}
+```
+
+### Batch Processing
+
+**Endpoint**: `WebSocket /api/batch/ws/{job_id}`
+
+**Message**:
+```json
+{
+  "documents": [...],
+  "config": {
+    "api_key": "...",
+    "model_name": "openai/gpt-4o-mini",
+    "num_tags": 8,
+    "num_pages": 3,
+    "exclusion_words": [
+      "government-india",
+      "ministry-of-social-justice",
+      "annual-report"
+    ]
+  }
+}
+```
+
+**Note**: For batch processing, exclusion words are typically set in the config, not via file upload.
+
+## Implementation Details
+
+### ExclusionListParser Class
+
+<CodeGroup>
+```python parse_from_text
+@staticmethod
+def parse_from_text(text: str) -> Set[str]:
+    """
+    Parse exclusion words from text content
+    """
+    words = set()
+    lines = text.strip().split('\n')
+    
+    for line in lines:
+        line = line.strip()
+        
+        # Skip empty lines and comments
+        if not line or line.startswith('#'):
+            continue
+        
+        # Split by comma if present
+        if ',' in line:
+            parts = [p.strip().lower() for p in line.split(',')]
+            words.update(p for p in parts if p and not p.startswith('#'))
+        else:
+            words.add(line.lower())
+    
+    logger.info(f"Parsed {len(words)} exclusion words")
+    return words
+```
+
+```python parse_from_file
+@staticmethod
+def parse_from_file(file_bytes: bytes, filename: str) -> Set[str]:
+    """
+    Parse exclusion list from uploaded file
+    """
+    if filename.endswith('.txt'):
+        # Auto-detect encoding
+        if CHARDET_AVAILABLE:
+            detected = chardet.detect(file_bytes)
+            encoding = detected['encoding']
+            if detected['confidence'] > 0.7:
+                text = file_bytes.decode(encoding)
+                return ExclusionListParser.parse_from_text(text)
+        
+        # Fallback to manual encoding attempts
+        for enc in ['utf-8', 'latin-1', 'cp1252']:
+            try:
+                text = file_bytes.decode(enc)
+                return ExclusionListParser.parse_from_text(text)
+            except UnicodeDecodeError:
+                continue
+        
+        # Last resort
+        text = file_bytes.decode('utf-8', errors='replace')
+        return ExclusionListParser.parse_from_text(text)
+    
+    elif filename.endswith('.pdf'):
+        from app.services.pdf_extractor import PDFExtractor
+        result = PDFExtractor.extract_text(file_bytes)
+        if result['success']:
+            return ExclusionListParser.parse_from_text(result['extracted_text'])
+        else:
+            raise ValueError(f"Failed to extract PDF: {result['error']}")
+    
+    else:
+        raise ValueError("Unsupported format. Use .txt or .pdf")
+```
+</CodeGroup>
+
+## Best Practices
+
+<Tip>
+**Building an exclusion list:**
+
+1. **Start small**: Begin with 5-10 most common terms
+2. **Process sample batch**: Run 10-20 documents
+3. **Analyze tags**: Look for repeated generic terms
+4. **Expand list**: Add frequent generic terms
+5. **Re-process**: Process same documents with updated list
+6. **Iterate**: Repeat until tags are specific
+</Tip>
+
+<Tip>
+**Effective exclusion terms:**
+
+- **Organizations**: Names that appear in every document
+- **Document types**: Generic categories like "report", "circular"
+- **Geographic**: If all documents are from same region
+- **Temporal**: If processing documents from same time period
+- **Domain**: Industry-specific generic terms
+</Tip>
+
+<Warning>
+**Don't over-exclude:**
+
+- Excluding too many terms reduces tag diversity
+- AI may struggle to generate unique tags
+- Some "common" terms may be meaningful in specific contexts
+- Start conservative, expand gradually
+</Warning>
+
+## Example Exclusion Lists
+
+### Government Documents
+
+```txt government-exclusions.txt
+# Organizations
+government-of-india
+ministry-of-social-justice
+ministry-of-finance
+department-of-empowerment
+national-commission
+
+# Document Types
+annual-report
+quarterly-report
+monthly-newsletter
+policy-document
+circular
+notification
+guidelines
+
+# Generic Terms
+empowerment
+welfare
+constitutional-provisions
+government-initiative
+public-sector
+social-welfare
+
+# Procedural
+implementation
+monitoring
+evaluation
+reporting
+budget-allocation
+```
+
+### Educational Documents
+
+```txt education-exclusions.txt
+# Institutions
+university
+college
+educational-institution
+academic-department
+
+# Document Types
+syllabus
+curriculum
+examination
+report-card
+certificate
+
+# Generic Terms
+education
+learning
+teaching
+student-welfare
+academic-excellence
+```
+
+### Corporate Documents
+
+```txt corporate-exclusions.txt
+# Company
+company-name
+corporation
+organization
+business-entity
+
+# Document Types
+financial-statement
+balance-sheet
+income-statement
+annual-report
+quarterly-earnings
+
+# Generic Terms
+business-strategy
+market-analysis
+financial-performance
+stakeholder-value
+corporate-governance
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Exclusion file not parsed">
+    **Symptoms**: No terms excluded, AI generates generic tags
+    
+    **Causes**:
+    - File format not `.txt` or `.pdf`
+    - File encoding issue
+    - All lines are comments or empty
+    
+    **Solution**:
+    - Verify file extension
+    - Check file content (not blank)
+    - Remove `#` from actual terms
+    - Use UTF-8 encoding for `.txt` files
+  </Accordion>
+  
+  <Accordion title="Too many tags filtered out">
+    **Symptoms**: Requested 8 tags, received only 3
+    
+    **Cause**: Exclusion list too broad, AI can't generate enough unique tags
+    
+    **Solution**:
+    - Review exclusion list, remove overly specific terms
+    - Increase `num_tags` to compensate
+    - System automatically requests 2x tags when exclusions present
+  </Accordion>
+  
+  <Accordion title="Excluded terms still appear">
+    **Symptoms**: Tags include terms from exclusion list
+    
+    **Cause**: Case sensitivity or formatting differences
+    
+    **Solution**:
+    - System converts all to lowercase (should match)
+    - Check for extra spaces or hyphens
+    - Verify term format matches AI output (e.g., `government-of-india` not `government of india`)
+  </Accordion>
+  
+  <Accordion title="PDF exclusion file not working">
+    **Symptoms**: PDF uploaded but no terms excluded
+    
+    **Cause**: PDF text extraction failed
+    
+    **Solution**:
+    - Ensure PDF contains actual text (not just image)
+    - Check if PDF requires OCR
+    - Convert PDF to `.txt` for better reliability
+  </Accordion>
+</AccordionGroup>
+
+## Advanced Usage
+
+### Dynamic Exclusion Lists
+
+**Use Case**: Different exclusion lists for different document categories
+
+```python
+# API call with dynamic exclusions
+config = {
+    'api_key': '...',
+    'num_tags': 8,
+    'exclusion_words': get_exclusions_for_category(doc_category)
+}
+
+def get_exclusions_for_category(category):
+    if category == 'government':
+        return ['government-of-india', 'ministry-of-social-justice', ...]
+    elif category == 'education':
+        return ['university', 'college', 'academic', ...]
+    elif category == 'corporate':
+        return ['company', 'corporation', 'financial-statement', ...]
+    else:
+        return []
+```
+
+### Merging Multiple Exclusion Lists
+
+```python
+# Combine general + domain-specific exclusions
+general_exclusions = parse_file('general-exclusions.txt')
+domain_exclusions = parse_file('government-exclusions.txt')
+
+combined_exclusions = general_exclusions.union(domain_exclusions)
+
+config = {
+    'exclusion_words': list(combined_exclusions)
+}
+```
+
+### Programmatic Exclusion Building
+
+```python
+# Build exclusion list from processed documents
+from collections import Counter
+
+# Collect all tags from processed docs
+all_tags = []
+for doc in processed_documents:
+    all_tags.extend(doc['tags'])
+
+# Find most common tags (likely generic)
+tag_counts = Counter(all_tags)
+most_common = tag_counts.most_common(50)
+
+# Add to exclusion list if appears in >50% of docs
+exclusions = [
+    tag for tag, count in most_common 
+    if count > len(processed_documents) * 0.5
+]
+```

@@ -1,0 +1,570 @@
+---
+title: URL-Based Document Processing
+description: Process PDFs directly from URLs without downloading — supports CloudFront, S3, government portals, and any publicly accessible HTTP/HTTPS source
+icon: link
+---
+
+## Overview
+
+URL-based processing allows you to **process PDF documents directly from web URLs** without manually downloading them. Simply paste a link, and the system handles the rest.
+
+<Info>
+Supports any publicly accessible HTTP/HTTPS URL, including **CloudFront distributions**, **S3 public URLs**, **government document portals**, and **institutional repositories**.
+</Info>
+
+## Supported URL Types
+
+<CardGroup cols={2}>
+  <Card title="Direct PDF URLs" icon="file-pdf">
+    Standard web-hosted PDF files:
+    
+    ```
+    https://example.com/document.pdf
+    https://example.com/docs/2024/report.pdf
+    https://cdn.example.org/files/manual.pdf
+    ```
+  </Card>
+  
+  <Card title="CloudFront URLs" icon="cloud">
+    AWS CloudFront CDN distributions:
+    
+    ```
+    https://d1581jr3fp95xu.cloudfront.net/documents/file.pdf
+    https://abcd1234.cloudfront.net/path/to/document.pdf
+    ```
+  </Card>
+  
+  <Card title="S3 Public URLs" icon="database">
+    Publicly accessible S3 bucket objects:
+    
+    ```
+    https://bucket-name.s3.region.amazonaws.com/file.pdf
+    https://my-docs.s3.us-east-1.amazonaws.com/reports/2024.pdf
+    ```
+  </Card>
+  
+  <Card title="Government Portals" icon="landmark">
+    Institutional document repositories:
+    
+    ```
+    https://socialjustice.gov.in/writereaddata/UploadFile/66991763713697.pdf
+    https://education.gov.in/sites/upload_files/mhrd/files/document.pdf
+    ```
+  </Card>
+</CardGroup>
+
+## How It Works
+
+<Steps>
+  <Step title="User Provides URL">
+    Enter a PDF URL in the input field:
+    
+    ```tsx
+    <input 
+      type="url"
+      value={pdfUrl}
+      onChange={handleUrlChange}
+      placeholder="https://example.com/document.pdf"
+    />
+    ```
+    
+    **Validation**:
+    - Must start with `http://` or `https://`
+    - URL format must be valid
+    - File extension doesn't need to be `.pdf` (content-type checked server-side)
+  </Step>
+  
+  <Step title="Frontend Validation">
+    Client-side validation before submission:
+    
+    ```typescript
+    const handleUrlChange = (e) => {
+      const url = e.target.value
+      
+      if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+        setUrlError('URL must start with http:// or https://')
+      } else {
+        setUrlError(null)
+        setPreviewUrl(getPdfPreviewUrl(url))
+      }
+    }
+    ```
+    
+    **Preview Proxy**:
+    ```typescript
+    // Use backend proxy to bypass CORS
+    export function getPdfPreviewUrl(url: string): string {
+      return `/api/single/preview?url=${encodeURIComponent(url)}`
+    }
+    ```
+  </Step>
+  
+  <Step title="Backend Download">
+    Server downloads the PDF:
+    
+    ```python
+    import requests
+    
+    response = requests.get(
+        pdf_url,
+        timeout=60,              # 60-second timeout
+        headers={
+            'User-Agent': 'Mozilla/5.0 ...'
+        },
+        stream=True              # Stream large files
+    )
+    
+    # Validate content type
+    content_type = response.headers.get('Content-Type', '')
+    if 'application/pdf' not in content_type:
+        raise ValueError(f"URL does not point to a PDF: {content_type}")
+    
+    # Check file size
+    content_length = response.headers.get('Content-Length')
+    if content_length and int(content_length) > 50 * 1024 * 1024:  # 50MB
+        raise ValueError("File too large (max 50MB)")
+    
+    # Read file bytes
+    pdf_bytes = response.content
+    ```
+    
+    **Security Headers**:
+    - Custom `User-Agent` to avoid bot blocking
+    - Follow redirects automatically
+    - SSL verification enabled
+  </Step>
+  
+  <Step title="Process as Normal">
+    Once downloaded, the PDF is processed identically to uploaded files:
+    
+    - Text extraction (PyPDF2 → Tesseract → EasyOCR)
+    - Language detection
+    - AI tag generation
+    - Results returned to frontend
+  </Step>
+</Steps>
+
+## PDF Preview
+
+### CORS Proxy Endpoint
+
+**Problem**: Browser CORS restrictions prevent direct PDF embedding from external URLs.
+
+**Solution**: Backend proxy endpoint that:
+1. Downloads the PDF server-side
+2. Serves it with appropriate headers
+3. Allows iframe embedding
+
+**Endpoint**: `GET /api/single/preview?url={pdf_url}`
+
+**Implementation**:
+```python
+@router.get("/preview")
+async def preview_pdf(url: str):
+    """
+    Proxy PDF from URL to bypass CORS restrictions
+    """
+    try:
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        
+        return Response(
+            content=response.content,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": "inline",
+                "X-Content-Type-Options": "nosniff"
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+```
+
+### Frontend Preview
+
+```tsx
+{previewUrl && (
+  <div className="border rounded-lg overflow-hidden" style={{height: '800px'}}>
+    <iframe
+      src={previewUrl}
+      className="w-full h-full"
+      title="PDF Preview"
+    />
+  </div>
+)}
+```
+
+**Fullscreen Support**:
+```tsx
+// Fullscreen modal
+<div className="fixed inset-0 z-50 bg-black bg-opacity-95">
+  <iframe src={previewUrl} className="w-full h-full" />
+</div>
+```
+
+## Validation
+
+### Pre-Flight Validation (Batch Processing)
+
+**Endpoint**: `POST /api/batch/validate-paths`
+
+**Request**:
+```json
+{
+  "paths": [
+    {
+      "path": "https://example.com/doc1.pdf",
+      "type": "url"
+    },
+    {
+      "path": "https://example.com/missing.pdf",
+      "type": "url"
+    }
+  ]
+}
+```
+
+**Validation Process**:
+```python
+def validate_url_path(url: str) -> dict:
+    try:
+        # Try HEAD request first (faster)
+        response = requests.head(url, timeout=10, allow_redirects=True)
+        
+        # Some servers don't support HEAD, fallback to GET
+        if response.status_code == 405:  # Method Not Allowed
+            response = requests.get(url, timeout=10, stream=True)
+        
+        if response.status_code == 200:
+            return {
+                "path": url,
+                "valid": True,
+                "error": None,
+                "content_type": response.headers.get('Content-Type'),
+                "size": response.headers.get('Content-Length')
+            }
+        else:
+            return {
+                "path": url,
+                "valid": False,
+                "error": f"HTTP {response.status_code}"
+            }
+    except Exception as e:
+        return {
+            "path": url,
+            "valid": False,
+            "error": str(e)
+        }
+```
+
+**Response**:
+```json
+{
+  "results": [
+    {
+      "path": "https://example.com/doc1.pdf",
+      "valid": true,
+      "error": null,
+      "content_type": "application/pdf",
+      "size": "1024000"
+    },
+    {
+      "path": "https://example.com/missing.pdf",
+      "valid": false,
+      "error": "HTTP 404",
+      "content_type": null,
+      "size": null
+    }
+  ],
+  "total": 2,
+  "valid_count": 1,
+  "invalid_count": 1
+}
+```
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="404 Not Found">
+    **Symptoms**:
+    ```json
+    {"error": "HTTP 404: URL not found"}
+    ```
+    
+    **Causes**:
+    - Incorrect URL
+    - File moved or deleted
+    - Typo in URL
+    
+    **Solution**:
+    - Verify URL in browser
+    - Check for redirects
+    - Update URL if file moved
+  </Accordion>
+  
+  <Accordion title="403 Forbidden">
+    **Symptoms**:
+    ```json
+    {"error": "HTTP 403: Access denied"}
+    ```
+    
+    **Causes**:
+    - Authentication required
+    - IP-based blocking
+    - Referrer checking
+    - Bot detection
+    
+    **Solution**:
+    - Check if URL requires login
+    - Use publicly accessible URL
+    - Contact document owner for public link
+  </Accordion>
+  
+  <Accordion title="Timeout">
+    **Symptoms**:
+    ```json
+    {"error": "Request timeout after 60 seconds"}
+    ```
+    
+    **Causes**:
+    - Slow server response
+    - Large file size
+    - Network congestion
+    
+    **Solution**:
+    - Try again later
+    - Use smaller file
+    - Download and upload file directly instead
+  </Accordion>
+  
+  <Accordion title="CORS Error (Preview Only)">
+    **Symptoms**: Preview shows blank page, but processing works
+    
+    **Cause**: Source server blocks cross-origin iframe embedding
+    
+    **Impact**: Only affects preview, processing still works (server-side download)
+    
+    **Solution**:
+    - Preview may not work, but you can still process
+    - Backend proxy should handle most cases
+    - Download file and upload directly if preview needed
+  </Accordion>
+  
+  <Accordion title="SSL Certificate Error">
+    **Symptoms**:
+    ```json
+    {"error": "SSL certificate verification failed"}
+    ```
+    
+    **Causes**:
+    - Expired certificate
+    - Self-signed certificate
+    - Certificate mismatch
+    
+    **Solution**:
+    - Contact site administrator
+    - Use HTTPS URL if available
+    - Download file manually if site trusted
+  </Accordion>
+  
+  <Accordion title="Content-Type Mismatch">
+    **Symptoms**:
+    ```json
+    {"error": "URL does not point to a PDF: text/html"}
+    ```
+    
+    **Causes**:
+    - URL points to HTML page, not PDF
+    - Server misconfigured (wrong Content-Type header)
+    - URL requires query parameters
+    
+    **Solution**:
+    - Verify URL ends in `.pdf` or returns PDF content
+    - Check URL in browser downloads file (not displays page)
+    - Copy download link, not page URL
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<Tip>
+**For faster processing:**
+- Use CDN URLs (CloudFront, Cloudflare) for better download speeds
+- Choose URLs with good network connectivity
+- Avoid password-protected or authenticated URLs
+</Tip>
+
+<Tip>
+**For reliability:**
+- Use pre-flight validation in batch processing
+- Test URLs in browser before batch processing
+- Use stable, permanent URLs (avoid temporary links)
+- Prefer HTTPS over HTTP
+</Tip>
+
+<Warning>
+**Common mistakes:**
+- Using HTML page URLs instead of direct PDF links
+- Using temporary download links that expire
+- Using URLs behind authentication/paywall
+- Using localhost or private network URLs
+</Warning>
+
+## Use Cases
+
+### Government Document Processing
+
+**Scenario**: Process 100 government reports from official portal
+
+**CSV**:
+```csv
+title,file_path,file_source_type
+"Annual Report 2024",https://gov.in/reports/2024/annual.pdf,url
+"Budget Allocation",https://gov.in/finance/budget-2024.pdf,url
+"Policy Guidelines",https://gov.in/policies/welfare-2024.pdf,url
+```
+
+**Benefits**:
+- No manual downloads
+- Direct processing from source
+- Links remain valid (official sources)
+
+### CloudFront CDN Processing
+
+**Scenario**: Process documents from S3 via CloudFront
+
+**CSV**:
+```csv
+title,file_path
+"Training Manual",https://d1581jr3fp95xu.cloudfront.net/training/manual.pdf
+"User Guide",https://d1581jr3fp95xu.cloudfront.net/docs/user-guide.pdf
+```
+
+**Benefits**:
+- Fast downloads (CDN edge servers)
+- High availability
+- Reduced S3 egress costs
+
+### Institutional Repository Processing
+
+**Scenario**: Process research papers from university repository
+
+**CSV**:
+```csv
+title,file_path
+"Research Paper 2024",https://university.edu/papers/2024/research-123.pdf
+"Thesis Document",https://university.edu/theses/2024/thesis-456.pdf
+```
+
+**Benefits**:
+- Direct academic source
+- Permanent DOI/handle URLs
+- No copyright issues (public repository)
+
+## API Reference
+
+### Single Document Processing
+
+**Endpoint**: `POST /api/single/process`
+
+**Form Data**:
+```python
+{
+    'pdf_url': 'https://example.com/document.pdf',  # Instead of pdf_file
+    'config': {
+        'api_key': '...',
+        'model_name': 'google/gemini-flash-1.5',
+        'num_tags': 8,
+        'num_pages': 3
+    },
+    'exclusion_file': None  # Optional
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "document_title": "Training Manual 2024",
+  "tags": ["pmkvy", "skill-development", ...],
+  "processing_time": 4.2,
+  "is_scanned": false,
+  "extraction_method": "pypdf2"
+}
+```
+
+### Preview Endpoint
+
+**Endpoint**: `GET /api/single/preview?url={pdf_url}`
+
+**Query Parameters**:
+- `url`: URL-encoded PDF URL
+
+**Response**:
+- Content-Type: `application/pdf`
+- Content-Disposition: `inline`
+- Body: PDF file bytes
+
+**Usage**:
+```html
+<iframe src="/api/single/preview?url=https%3A%2F%2Fexample.com%2Fdoc.pdf"></iframe>
+```
+
+### Batch Validation
+
+**Endpoint**: `POST /api/batch/validate-paths`
+
+**Request**:
+```json
+{
+  "paths": [
+    {"path": "https://example.com/doc1.pdf", "type": "url"},
+    {"path": "https://example.com/doc2.pdf", "type": "url"}
+  ]
+}
+```
+
+**Response**:
+```json
+{
+  "results": [
+    {"path": "...", "valid": true, "content_type": "application/pdf", "size": 1024000},
+    {"path": "...", "valid": false, "error": "HTTP 404"}
+  ],
+  "total": 2,
+  "valid_count": 1,
+  "invalid_count": 1
+}
+```
+
+## Troubleshooting
+
+<Steps>
+  <Step title="Test URL in Browser">
+    Open the URL in your browser:
+    - Should download a PDF file
+    - Should NOT display an HTML page
+    - Should NOT require login
+  </Step>
+  
+  <Step title="Check Content-Type">
+    Use browser developer tools (Network tab):
+    - Look for `Content-Type: application/pdf` header
+    - Verify response status is `200 OK`
+  </Step>
+  
+  <Step title="Verify URL Format">
+    - Must start with `http://` or `https://`
+    - Should be properly URL-encoded
+    - No special characters without encoding
+  </Step>
+  
+  <Step title="Try Validation Endpoint">
+    Use batch validation to test URL before processing:
+    ```bash
+    curl -X POST /api/batch/validate-paths \
+      -H "Content-Type: application/json" \
+      -d '{"paths": [{"path": "YOUR_URL", "type": "url"}]}'
+    ```
+  </Step>
+</Steps>

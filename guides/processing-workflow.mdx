@@ -1,0 +1,669 @@
+---
+title: 'Document Processing Workflow'
+description: 'Complete guide to processing documents and generating AI-powered metadata tags'
+icon: 'diagram-project'
+---
+
+Learn the complete workflow for processing PDF documents, from text extraction to AI tag generation, with support for OCR, multiple languages, and various file sources.
+
+## Overview
+
+The Meta-Data Tag Generator provides two processing modes:
+
+<CardGroup cols={2}>
+  <Card title="Single Document" icon="file" href="#single-document-processing">
+    Process individual PDFs via file upload or URL
+  </Card>
+  <Card title="Batch Processing" icon="files" href="#batch-processing">
+    Process multiple documents using CSV with real-time progress tracking
+  </Card>
+</CardGroup>
+
+## Single Document Processing
+
+Process individual PDF documents with AI-powered tag generation.
+
+### Processing Flow
+
+<Steps>
+  <Step title="Upload or Provide URL">
+    Submit a PDF file or provide a publicly accessible URL to the document.
+  </Step>
+  <Step title="Text Extraction">
+    The system extracts text using a 3-tier approach:
+    - **PyPDF2** for text-based PDFs (fastest)
+    - **Tesseract OCR** for scanned documents in Hindi/English
+    - **EasyOCR** for complex Indian scripts (automatic fallback)
+  </Step>
+  <Step title="AI Tag Generation">
+    Extracted text is sent to OpenRouter AI to generate searchable metadata tags.
+  </Step>
+  <Step title="Results">
+    Receive generated tags, extracted text preview, and processing metadata.
+  </Step>
+</Steps>
+
+### API Endpoint
+
+```http
+POST /api/single/process
+```
+
+### Authentication
+
+All processing endpoints require authentication. Include your access token:
+
+```bash
+Authorization: Bearer <your-access-token>
+```
+
+### Processing via File Upload
+
+<CodeGroup>
+```python File Upload
+import requests
+import json
+
+url = "http://localhost:8000/api/single/process"
+
+# Configuration for AI tagging
+config = {
+    "api_key": "your-openrouter-api-key",
+    "model_name": "openai/gpt-4o-mini",
+    "num_pages": 3,
+    "num_tags": 8,
+    "exclusion_words": ["government", "india"]  # Optional
+}
+
+# Prepare multipart form data
+files = {
+    "pdf_file": open("document.pdf", "rb")
+}
+data = {
+    "config": json.dumps(config)
+}
+headers = {
+    "Authorization": f"Bearer {access_token}"
+}
+
+response = requests.post(url, files=files, data=data, headers=headers)
+result = response.json()
+
+print(f"Document: {result['document_title']}")
+print(f"Tags: {result['tags']}")
+print(f"Extraction method: {result['extraction_method']}")
+print(f"Processing time: {result['processing_time']}s")
+```
+
+```javascript JavaScript
+const formData = new FormData();
+formData.append('pdf_file', pdfFile);  // File object from input
+formData.append('config', JSON.stringify({
+  api_key: 'your-openrouter-api-key',
+  model_name: 'openai/gpt-4o-mini',
+  num_pages: 3,
+  num_tags: 8
+}));
+
+const response = await fetch('http://localhost:8000/api/single/process', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${accessToken}`
+  },
+  body: formData
+});
+
+const result = await response.json();
+console.log('Tags:', result.tags);
+```
+
+```bash cURL
+curl -X POST http://localhost:8000/api/single/process \
+  -H "Authorization: Bearer <token>" \
+  -F "pdf_file=@/path/to/document.pdf" \
+  -F 'config={"api_key":"sk-or-v1-...","model_name":"openai/gpt-4o-mini","num_pages":3,"num_tags":8}'
+```
+</CodeGroup>
+
+### Processing via URL
+
+Process documents from public URLs without downloading them first:
+
+```python URL Processing
+import requests
+import json
+
+url = "http://localhost:8000/api/single/process"
+
+config = {
+    "api_key": "your-openrouter-api-key",
+    "model_name": "openai/gpt-4o-mini",
+    "num_pages": 3,
+    "num_tags": 8
+}
+
+data = {
+    "pdf_url": "https://example.com/document.pdf",
+    "config": json.dumps(config)
+}
+
+headers = {"Authorization": f"Bearer {access_token}"}
+response = requests.post(url, data=data, headers=headers)
+result = response.json()
+```
+
+<Note>
+  The system supports various URL types including CloudFront, S3 public URLs, and government portals. URLs must be publicly accessible (no authentication required).
+</Note>
+
+### Configuration Parameters
+
+<ParamField path="api_key" type="string" required>
+  Your OpenRouter API key for AI tag generation
+</ParamField>
+
+<ParamField path="model_name" type="string" default="openai/gpt-4o-mini">
+  AI model to use. Recommended options:
+  - `openai/gpt-4o-mini` (fast, cost-effective)
+  - `google/gemini-flash-1.5` (fast, good for multilingual)
+  - `anthropic/claude-3-haiku` (high quality)
+</ParamField>
+
+<ParamField path="num_pages" type="integer" default={3}>
+  Number of PDF pages to extract (1-10). More pages = better context but higher API costs.
+</ParamField>
+
+<ParamField path="num_tags" type="integer" default={8}>
+  Number of tags to generate (3-15). Tags are optimized for ElasticSearch.
+</ParamField>
+
+<ParamField path="exclusion_words" type="array" optional>
+  Words/phrases to exclude from generated tags. Useful for filtering common organizational terms.
+</ParamField>
+
+### Response Format
+
+```json Response
+{
+  "success": true,
+  "document_title": "Training Manual 2024",
+  "tags": [
+    "training-manual-2024",
+    "employee-development",
+    "organizational-policies",
+    "standard-operating-procedures",
+    "compliance-guidelines",
+    "department-protocols",
+    "workforce-training",
+    "quality-assurance"
+  ],
+  "extracted_text_preview": "TRAINING MANUAL 2024\n\nTable of Contents\n1. Introduction to Employee Development...",
+  "processing_time": 4.23,
+  "is_scanned": false,
+  "extraction_method": "pypdf2",
+  "ocr_confidence": null,
+  "raw_ai_response": "training-manual-2024, employee-development, ..."
+}
+```
+
+<ResponseField name="success" type="boolean">
+  Indicates if processing completed successfully
+</ResponseField>
+
+<ResponseField name="document_title" type="string">
+  Extracted document title from PDF metadata or filename
+</ResponseField>
+
+<ResponseField name="tags" type="array">
+  Generated metadata tags optimized for search
+</ResponseField>
+
+<ResponseField name="extracted_text_preview" type="string">
+  First 500 characters of extracted text
+</ResponseField>
+
+<ResponseField name="processing_time" type="float">
+  Total processing time in seconds
+</ResponseField>
+
+<ResponseField name="is_scanned" type="boolean">
+  Whether the document required OCR processing
+</ResponseField>
+
+<ResponseField name="extraction_method" type="string">
+  Method used: `pypdf2`, `tesseract_ocr`, or `easyocr`
+</ResponseField>
+
+<ResponseField name="ocr_confidence" type="float">
+  OCR confidence score (0-100) for scanned documents
+</ResponseField>
+
+## OCR and Multi-Language Support
+
+The system automatically detects scanned documents and applies appropriate OCR:
+
+<AccordionGroup>
+  <Accordion title="Text-based PDFs (PyPDF2)">
+    **When used**: Documents with selectable text
+    
+    **Languages**: All languages supported by PDF text layer
+    
+    **Speed**: Fastest (< 1 second)
+    
+    **Accuracy**: 100% (reads embedded text directly)
+    
+    ```json
+    {
+      "extraction_method": "pypdf2",
+      "is_scanned": false
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Hindi/English Scans (Tesseract OCR)">
+    **When used**: Scanned documents, automatic fallback from PyPDF2
+    
+    **Languages**: Hindi (`hin`), English (`eng`)
+    
+    **Speed**: Fast (3-5 seconds per page)
+    
+    **Accuracy**: Good for clear scans (70-95%)
+    
+    **Automatic fallback**: Switches to EasyOCR if confidence < 60%
+    
+    ```json
+    {
+      "extraction_method": "tesseract_ocr",
+      "is_scanned": true,
+      "ocr_confidence": 85.3
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Complex Indian Scripts (EasyOCR)">
+    **When used**: 
+    - Tesseract confidence < 60%
+    - Complex Indian language scripts detected
+    - Low-quality scans
+    
+    **Languages**: 80+ languages including Hindi, Tamil, Telugu, Bengali, Kannada, Malayalam, Marathi, Gujarati, Punjabi, and more
+    
+    **Speed**: Slower (10-30 seconds per page, GPU-accelerated)
+    
+    **Accuracy**: Excellent for complex scripts and poor quality scans (85-98%)
+    
+    ```json
+    {
+      "extraction_method": "easyocr",
+      "is_scanned": true,
+      "ocr_confidence": 92.7
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Exclusion List Feature
+
+Filter out common organizational terms that don't add search value:
+
+### Via exclusion_words Parameter
+
+```python Inline Exclusion
+config = {
+    "api_key": "sk-or-v1-...",
+    "model_name": "openai/gpt-4o-mini",
+    "num_pages": 3,
+    "num_tags": 8,
+    "exclusion_words": [
+        "government-india",
+        "ministry-of-social-justice",
+        "annual-report",
+        "newsletter"
+    ]
+}
+```
+
+### Via Exclusion File Upload
+
+Upload a `.txt` or `.pdf` file containing exclusion terms:
+
+```python File-based Exclusion
+files = {
+    "pdf_file": open("document.pdf", "rb"),
+    "exclusion_file": open("exclusion-list.txt", "rb")
+}
+data = {
+    "config": json.dumps(config)
+}
+
+response = requests.post(url, files=files, data=data, headers=headers)
+```
+
+**Exclusion file format** (`exclusion-list.txt`):
+
+```text
+# Common government organizations
+government-india
+ministry-of-social-justice
+social-justice
+
+# Generic document types
+annual-report
+newsletter
+policy-document
+
+# Overly generic terms
+empowerment
+constitutional-provisions
+```
+
+<Info>
+  The system uses a two-layer approach: AI is instructed to avoid excluded terms, and any that slip through are filtered in post-processing. The system ensures you always get the requested number of tags.
+</Info>
+
+## Batch Processing
+
+Process multiple documents efficiently with real-time progress tracking.
+
+### Batch Processing Flow
+
+<Steps>
+  <Step title="Prepare CSV File">
+    Create a CSV with document metadata and file paths (URLs, S3 paths, or local files).
+  </Step>
+  <Step title="Start Batch Job">
+    Submit CSV and configuration to start background processing.
+  </Step>
+  <Step title="Monitor Progress">
+    Connect via WebSocket to receive real-time updates for each document.
+  </Step>
+  <Step title="Retrieve Results">
+    Access processed results with tags for all documents.
+  </Step>
+</Steps>
+
+### Start Batch Job
+
+```http
+POST /api/batch/start
+```
+
+<CodeGroup>
+```python Start Batch Job
+import requests
+import json
+
+url = "http://localhost:8000/api/batch/start"
+
+documents = [
+    {
+        "title": "Training Manual",
+        "description": "Employee training document",
+        "file_source_type": "url",
+        "file_path": "https://example.com/doc1.pdf",
+        "publishing_date": "2025-01-15",
+        "file_size": "1.2MB"
+    },
+    {
+        "title": "Annual Report 2024",
+        "file_source_type": "url",
+        "file_path": "https://example.com/doc2.pdf"
+    }
+]
+
+config = {
+    "api_key": "your-openrouter-api-key",
+    "model_name": "openai/gpt-4o-mini",
+    "num_pages": 3,
+    "num_tags": 8
+}
+
+payload = {
+    "documents": documents,
+    "config": config
+}
+
+headers = {"Authorization": f"Bearer {access_token}"}
+response = requests.post(url, json=payload, headers=headers)
+job = response.json()
+
+print(f"Job started: {job['job_id']}")
+print(f"Total documents: {job['total_documents']}")
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/batch/start', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${accessToken}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    documents: [
+      {
+        title: 'Training Manual',
+        file_source_type: 'url',
+        file_path: 'https://example.com/doc1.pdf'
+      }
+    ],
+    config: {
+      api_key: 'your-api-key',
+      model_name: 'openai/gpt-4o-mini',
+      num_pages: 3,
+      num_tags: 8
+    }
+  })
+});
+
+const job = await response.json();
+console.log('Job ID:', job.job_id);
+```
+</CodeGroup>
+
+### Real-time Progress via WebSocket
+
+Connect to WebSocket endpoint to receive live updates:
+
+```python WebSocket Progress Monitoring
+import asyncio
+import websockets
+import json
+
+async def monitor_batch_progress(job_id, access_token):
+    uri = f"ws://localhost:8000/api/batch/ws/{job_id}?token={access_token}"
+    
+    async with websockets.connect(uri) as websocket:
+        while True:
+            message = await websocket.recv()
+            data = json.loads(message)
+            
+            if data['type'] == 'catchup':
+                print(f"Catching up: {len(data['results'])} results so far")
+            
+            elif data['type'] == 'progress':
+                print(f"[{data['row_number']}/{data.get('total', '?')}] {data['title']}: {data['status']}")
+                if data['status'] == 'success':
+                    print(f"  Tags: {data['tags']}")
+                elif data['status'] == 'failed':
+                    print(f"  Error: {data['error']}")
+            
+            elif data['type'] == 'completed':
+                print(f"\nBatch completed!")
+                print(f"Processed: {data['processed_count']}")
+                print(f"Failed: {data['failed_count']}")
+                print(f"Time: {data['processing_time']}s")
+                break
+            
+            elif data['type'] == 'error':
+                print(f"Error: {data.get('message')}")
+                break
+
+# Run monitoring
+asyncio.run(monitor_batch_progress(job_id, access_token))
+```
+
+### WebSocket Message Types
+
+<AccordionGroup>
+  <Accordion title="catchup - Initial State">
+    Sent when you first connect, contains all results processed so far:
+    
+    ```json
+    {
+      "type": "catchup",
+      "job_id": "550e8400-e29b-41d4-a716-446655440000",
+      "state": {
+        "status": "processing",
+        "progress": 0.3,
+        "processed_count": 3,
+        "total": 10
+      },
+      "results": [
+        {"row_id": 0, "status": "success", "tags": [...]},
+        {"row_id": 1, "status": "success", "tags": [...]},
+        {"row_id": 2, "status": "failed", "error": "..."}
+      ]
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="progress - Document Update">
+    Sent for each document as it's processed:
+    
+    ```json
+    {
+      "type": "progress",
+      "job_id": "550e8400-e29b-41d4-a716-446655440000",
+      "row_id": 3,
+      "row_number": 4,
+      "title": "Annual Report 2024",
+      "status": "success",
+      "progress": 0.4,
+      "tags": ["annual-report-2024", "financial-summary", ...],
+      "metadata": {
+        "extraction_method": "pypdf2",
+        "is_scanned": false,
+        "processing_time": 3.2
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="completed - Job Finished">
+    Sent when all documents are processed:
+    
+    ```json
+    {
+      "type": "completed",
+      "job_id": "550e8400-e29b-41d4-a716-446655440000",
+      "total_documents": 10,
+      "processed_count": 9,
+      "failed_count": 1,
+      "processing_time": 45.2,
+      "message": "Completed: 9 succeeded, 1 failed"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="error - Processing Error">
+    Sent if job encounters fatal error:
+    
+    ```json
+    {
+      "type": "error",
+      "job_id": "550e8400-e29b-41d4-a716-446655440000",
+      "message": "Job cancelled by user"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Job Control
+
+Manage running batch jobs:
+
+<CodeGroup>
+```python Get Job Status
+url = f"http://localhost:8000/api/batch/jobs/{job_id}/status"
+headers = {"Authorization": f"Bearer {access_token}"}
+
+response = requests.get(url, headers=headers)
+status = response.json()
+
+print(f"Status: {status['status']}")
+print(f"Progress: {status['progress'] * 100}%")
+print(f"Processed: {status['processed_count']}/{status['total']}")
+```
+
+```python Cancel Job
+url = f"http://localhost:8000/api/batch/jobs/{job_id}/cancel"
+headers = {"Authorization": f"Bearer {access_token}"}
+
+response = requests.post(url, headers=headers)
+print(response.json()['message'])  # "Cancel command sent to job ..."
+```
+
+```python Pause/Resume Job
+# Pause
+requests.post(
+    f"http://localhost:8000/api/batch/jobs/{job_id}/pause",
+    headers={"Authorization": f"Bearer {access_token}"}
+)
+
+# Resume
+requests.post(
+    f"http://localhost:8000/api/batch/jobs/{job_id}/resume",
+    headers={"Authorization": f"Bearer {access_token}"}
+)
+```
+</CodeGroup>
+
+## Path Validation
+
+Validate file paths before processing to catch errors early:
+
+```python Pre-flight Validation
+url = "http://localhost:8000/api/batch/validate-paths"
+
+payload = {
+    "paths": [
+        {"path": "https://example.com/doc1.pdf", "type": "url"},
+        {"path": "s3://my-bucket/doc2.pdf", "type": "s3"},
+        {"path": "/local/path/doc3.pdf", "type": "local"}
+    ]
+}
+
+headers = {"Authorization": f"Bearer {access_token}"}
+response = requests.post(url, json=payload, headers=headers)
+results = response.json()
+
+for result in results['results']:
+    if result['valid']:
+        print(f"✓ {result['path']} - {result['content_type']}")
+    else:
+        print(f"✗ {result['path']} - {result['error']}")
+
+print(f"\nValid: {results['valid_count']}, Invalid: {results['invalid_count']}")
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Optimize Page Count" icon="page">
+    Start with 3 pages for most documents. Increase for complex docs, decrease for simple ones to save API costs.
+  </Card>
+  
+  <Card title="Use Exclusion Lists" icon="filter">
+    Create organization-specific exclusion lists to filter common terms that don't add search value.
+  </Card>
+  
+  <Card title="Choose Right Model" icon="brain">
+    - `gpt-4o-mini`: Best balance of speed/cost
+    - `gemini-flash-1.5`: Excellent for multilingual
+    - `claude-3-haiku`: Highest quality
+  </Card>
+  
+  <Card title="Handle OCR Confidence" icon="magnifying-glass">
+    For scanned docs, check `ocr_confidence`. If < 70%, consider manual review or higher-quality scan.
+  </Card>
+</CardGroup>

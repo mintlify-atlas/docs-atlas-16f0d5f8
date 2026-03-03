@@ -1,0 +1,520 @@
+---
+title: 'User Authentication'
+description: 'Learn how to register, log in, and manage your Meta-Data Tag Generator account'
+icon: 'key'
+---
+
+The Meta-Data Tag Generator uses JWT-based authentication to secure all API endpoints. This guide covers registration, login, token management, and authentication workflows.
+
+## Authentication Flow
+
+<Steps>
+  <Step title="Register an Account">
+    Create a new user account with email and password. All API operations require authentication.
+  </Step>
+  <Step title="Log In">
+    Authenticate with your credentials to receive access and refresh tokens.
+  </Step>
+  <Step title="Use Access Token">
+    Include the access token in the `Authorization` header for all API requests.
+  </Step>
+  <Step title="Refresh Token">
+    When your access token expires, use the refresh token to obtain a new access token without re-authentication.
+  </Step>
+</Steps>
+
+## Registration
+
+Register a new user account to access the document processing API.
+
+### API Endpoint
+
+```http
+POST /api/auth/register
+```
+
+### Request Body
+
+<CodeGroup>
+```json Request
+{
+  "email": "user@example.com",
+  "password": "SecurePassword123!",
+  "full_name": "John Doe"
+}
+```
+
+```python Python
+import requests
+
+url = "http://localhost:8000/api/auth/register"
+payload = {
+    "email": "user@example.com",
+    "password": "SecurePassword123!",
+    "full_name": "John Doe"
+}
+
+response = requests.post(url, json=payload)
+user = response.json()
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/auth/register', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    email: 'user@example.com',
+    password: 'SecurePassword123!',
+    full_name: 'John Doe'
+  })
+});
+
+const user = await response.json();
+```
+</CodeGroup>
+
+### Response
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "user@example.com",
+  "full_name": "John Doe",
+  "is_active": true,
+  "is_verified": false,
+  "created_at": "2026-03-03T10:30:00Z"
+}
+```
+
+<Note>
+  Passwords must be at least 8 characters long. The system enforces secure password requirements.
+</Note>
+
+## Login
+
+Authenticate with your credentials to receive JWT tokens.
+
+### API Endpoint
+
+```http
+POST /api/auth/login
+```
+
+### Request Body
+
+<CodeGroup>
+```json Request
+{
+  "email": "user@example.com",
+  "password": "SecurePassword123!"
+}
+```
+
+```python Python
+import requests
+
+url = "http://localhost:8000/api/auth/login"
+payload = {
+    "email": "user@example.com",
+    "password": "SecurePassword123!"
+}
+
+response = requests.post(url, json=payload)
+auth_data = response.json()
+
+# Store tokens for later use
+access_token = auth_data['tokens']['access_token']
+refresh_token = auth_data['tokens']['refresh_token']
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/auth/login', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    email: 'user@example.com',
+    password: 'SecurePassword123!'
+  })
+});
+
+const authData = await response.json();
+const accessToken = authData.tokens.access_token;
+const refreshToken = authData.tokens.refresh_token;
+```
+</CodeGroup>
+
+### Response
+
+```json
+{
+  "user": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "email": "user@example.com",
+    "full_name": "John Doe",
+    "is_active": true,
+    "is_verified": false,
+    "created_at": "2026-03-03T10:30:00Z"
+  },
+  "tokens": {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "token_type": "bearer",
+    "expires_in": 3600
+  }
+}
+```
+
+## Using Access Tokens
+
+Include the access token in the `Authorization` header for all authenticated requests.
+
+<CodeGroup>
+```python Python
+import requests
+
+headers = {
+    "Authorization": f"Bearer {access_token}"
+}
+
+# Example: Process a single PDF
+response = requests.post(
+    "http://localhost:8000/api/single/process",
+    headers=headers,
+    files={"pdf_file": open("document.pdf", "rb")},
+    data={"config": json.dumps(config)}
+)
+```
+
+```javascript JavaScript
+const headers = {
+  'Authorization': `Bearer ${accessToken}`
+};
+
+// Example: Get current user info
+const response = await fetch('http://localhost:8000/api/auth/me', {
+  headers: headers
+});
+
+const user = await response.json();
+```
+
+```bash cURL
+curl -X POST http://localhost:8000/api/single/process \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." \
+  -F "pdf_file=@document.pdf" \
+  -F 'config={"api_key":"...","model_name":"openai/gpt-4o-mini","num_pages":3,"num_tags":8}'
+```
+</CodeGroup>
+
+## Refreshing Tokens
+
+Access tokens expire after a set period (default: 1 hour). Use the refresh token to obtain a new access token without requiring the user to log in again.
+
+### API Endpoint
+
+```http
+POST /api/auth/refresh
+```
+
+### Request Body
+
+```json
+{
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+### Response
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "bearer",
+  "expires_in": 3600
+}
+```
+
+<CodeGroup>
+```python Python
+import requests
+
+def refresh_access_token(refresh_token):
+    url = "http://localhost:8000/api/auth/refresh"
+    payload = {"refresh_token": refresh_token}
+    
+    response = requests.post(url, json=payload)
+    tokens = response.json()
+    
+    return tokens['access_token'], tokens['refresh_token']
+
+# Usage
+new_access_token, new_refresh_token = refresh_access_token(refresh_token)
+```
+
+```javascript JavaScript
+async function refreshAccessToken(refreshToken) {
+  const response = await fetch('http://localhost:8000/api/auth/refresh', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken })
+  });
+  
+  const tokens = await response.json();
+  return tokens;
+}
+
+// Usage
+const newTokens = await refreshAccessToken(refreshToken);
+```
+</CodeGroup>
+
+## Get Current User
+
+Retrieve information about the currently authenticated user.
+
+### API Endpoint
+
+```http
+GET /api/auth/me
+```
+
+### Example
+
+```python
+import requests
+
+headers = {"Authorization": f"Bearer {access_token}"}
+response = requests.get("http://localhost:8000/api/auth/me", headers=headers)
+user_info = response.json()
+
+print(f"Logged in as: {user_info['email']}")
+print(f"User ID: {user_info['id']}")
+```
+
+## Logout
+
+Revoke a refresh token to log out the user.
+
+### API Endpoint
+
+```http
+POST /api/auth/logout
+```
+
+### Request Body
+
+```json
+{
+  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+### Response
+
+```json
+{
+  "message": "Successfully logged out",
+  "success": true
+}
+```
+
+<CodeGroup>
+```python Python
+import requests
+
+url = "http://localhost:8000/api/auth/logout"
+payload = {"refresh_token": refresh_token}
+
+response = requests.post(url, json=payload)
+print(response.json()['message'])  # "Successfully logged out"
+```
+
+```javascript JavaScript
+const response = await fetch('http://localhost:8000/api/auth/logout', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ refresh_token: refreshToken })
+});
+
+const result = await response.json();
+console.log(result.message);  // "Successfully logged out"
+```
+</CodeGroup>
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="401 Unauthorized">
+    **Cause**: Invalid credentials or expired access token.
+    
+    **Solution**: 
+    - Check that email and password are correct
+    - Refresh your access token using the refresh token
+    - Re-authenticate if refresh token is also expired
+
+    ```json
+    {
+      "detail": "Invalid email or password"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="400 Bad Request">
+    **Cause**: Invalid request format or missing required fields.
+    
+    **Solution**: 
+    - Ensure email is valid format
+    - Password must be at least 8 characters
+    - All required fields must be provided
+
+    ```json
+    {
+      "detail": "Password must be at least 8 characters"
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="403 Forbidden">
+    **Cause**: Account is inactive or not verified.
+    
+    **Solution**: Contact administrator to activate account.
+
+    ```json
+    {
+      "detail": "Account is inactive"
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Secure Token Storage" icon="lock">
+    - Store tokens securely (e.g., encrypted storage, secure cookies)
+    - Never expose tokens in URLs or logs
+    - Clear tokens on logout
+  </Card>
+  
+  <Card title="Token Refresh Strategy" icon="rotate">
+    - Implement automatic token refresh before expiration
+    - Handle 401 errors by attempting token refresh
+    - Fall back to re-authentication if refresh fails
+  </Card>
+  
+  <Card title="Session Management" icon="clock">
+    - Access tokens expire after 1 hour by default
+    - Refresh tokens have longer lifetime
+    - Implement logout functionality to revoke tokens
+  </Card>
+  
+  <Card title="Error Recovery" icon="triangle-exclamation">
+    - Catch authentication errors gracefully
+    - Provide clear error messages to users
+    - Redirect to login on authentication failure
+  </Card>
+</CardGroup>
+
+## Implementation Example
+
+Here's a complete authentication flow implementation:
+
+```python Complete Authentication Flow
+import requests
+from datetime import datetime, timedelta
+
+class AuthClient:
+    def __init__(self, base_url="http://localhost:8000"):
+        self.base_url = base_url
+        self.access_token = None
+        self.refresh_token = None
+        self.token_expiry = None
+    
+    def register(self, email, password, full_name=None):
+        """Register a new user"""
+        url = f"{self.base_url}/api/auth/register"
+        payload = {
+            "email": email,
+            "password": password,
+            "full_name": full_name
+        }
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        return response.json()
+    
+    def login(self, email, password):
+        """Login and store tokens"""
+        url = f"{self.base_url}/api/auth/login"
+        payload = {"email": email, "password": password}
+        
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        
+        data = response.json()
+        self.access_token = data['tokens']['access_token']
+        self.refresh_token = data['tokens']['refresh_token']
+        self.token_expiry = datetime.now() + timedelta(seconds=data['tokens']['expires_in'])
+        
+        return data['user']
+    
+    def refresh_tokens(self):
+        """Refresh access token"""
+        if not self.refresh_token:
+            raise ValueError("No refresh token available")
+        
+        url = f"{self.base_url}/api/auth/refresh"
+        payload = {"refresh_token": self.refresh_token}
+        
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+        
+        data = response.json()
+        self.access_token = data['access_token']
+        self.refresh_token = data['refresh_token']
+        self.token_expiry = datetime.now() + timedelta(seconds=data['expires_in'])
+    
+    def get_headers(self):
+        """Get authorization headers, refreshing token if needed"""
+        # Refresh if token will expire in next 5 minutes
+        if self.token_expiry and datetime.now() >= self.token_expiry - timedelta(minutes=5):
+            self.refresh_tokens()
+        
+        return {"Authorization": f"Bearer {self.access_token}"}
+    
+    def logout(self):
+        """Logout and clear tokens"""
+        if self.refresh_token:
+            url = f"{self.base_url}/api/auth/logout"
+            payload = {"refresh_token": self.refresh_token}
+            requests.post(url, json=payload)
+        
+        self.access_token = None
+        self.refresh_token = None
+        self.token_expiry = None
+
+# Usage
+auth = AuthClient()
+
+# Register
+auth.register("user@example.com", "SecurePass123!", "John Doe")
+
+# Login
+user = auth.login("user@example.com", "SecurePass123!")
+print(f"Logged in as {user['email']}")
+
+# Make authenticated requests
+headers = auth.get_headers()
+response = requests.post(
+    "http://localhost:8000/api/single/process",
+    headers=headers,
+    # ... other parameters
+)
+
+# Logout
+auth.logout()
+```
+
+<Info>
+  The authentication system tracks device information and IP addresses for security purposes. This data is automatically captured from request headers.
+</Info>

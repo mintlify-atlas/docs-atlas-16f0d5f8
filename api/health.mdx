@@ -1,0 +1,249 @@
+---
+title: 'Status & Health'
+description: 'Health check and status monitoring endpoints'
+---
+
+## Overview
+
+The Meta-Data Tag Generator API provides two endpoints for monitoring service health and availability. These endpoints are essential for deployment verification, uptime monitoring, and ensuring the API is operational.
+
+## GET /api/health
+
+Comprehensive health check endpoint that returns detailed service status, version information, and a confirmation message.
+
+### Use Cases
+
+- **Deployment Verification**: Confirm successful deployment after updates
+- **Monitoring Systems**: Integrate with health check monitoring tools (Datadog, New Relic, etc.)
+- **Load Balancer Health Checks**: Configure load balancers to verify backend availability
+- **Frontend Status Checks**: Verify API connectivity before making requests
+
+### Request
+
+```bash
+curl https://your-api-domain.com/api/health
+```
+
+### Response
+
+<ResponseField name="status" type="string" required>
+  Current health status of the API. Returns `"healthy"` when operational.
+</ResponseField>
+
+<ResponseField name="version" type="string" required>
+  Current API version. Example: `"1.0.0"`
+</ResponseField>
+
+<ResponseField name="message" type="string" required>
+  Human-readable confirmation message. Returns `"Document Meta-Tagging API is running"`
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "status": "healthy",
+  "version": "1.0.0",
+  "message": "Document Meta-Tagging API is running"
+}
+```
+
+### Response Codes
+
+<ResponseField name="200" type="Success">
+  API is running and healthy
+</ResponseField>
+
+<ResponseField name="500" type="Error">
+  Service error (endpoint should always return 200 if reachable)
+</ResponseField>
+
+---
+
+## GET /api/status
+
+Simple status check endpoint for quick API availability verification. Returns minimal response for basic health checks.
+
+### Use Cases
+
+- **Quick Health Checks**: Lightweight ping to verify API is responding
+- **Simple Monitoring**: Basic uptime monitoring without detailed information
+- **Container Health Checks**: Docker/Kubernetes liveness probes
+- **API Gateway Health**: Lightweight checks for API gateway routing
+
+### Request
+
+```bash
+curl https://your-api-domain.com/api/status
+```
+
+### Response
+
+<ResponseField name="status" type="string" required>
+  Simple status indicator. Returns `"ok"` when operational.
+</ResponseField>
+
+<ResponseField name="service" type="string" required>
+  Service identifier. Returns `"document-meta-tagging-api"`
+</ResponseField>
+
+### Response Example
+
+```json
+{
+  "status": "ok",
+  "service": "document-meta-tagging-api"
+}
+```
+
+### Response Codes
+
+<ResponseField name="200" type="Success">
+  API is responding normally
+</ResponseField>
+
+<ResponseField name="500" type="Error">
+  Service error (endpoint should always return 200 if reachable)
+</ResponseField>
+
+---
+
+## Health vs Status
+
+| Feature | `/api/health` | `/api/status` |
+|---------|---------------|---------------|
+| **Response Size** | Detailed | Minimal |
+| **Version Info** | Yes | No |
+| **Message** | Descriptive | None |
+| **Use Case** | Comprehensive monitoring | Quick availability check |
+| **Recommended For** | Production monitoring, deployment verification | Container health probes, lightweight checks |
+
+---
+
+## Frontend Integration
+
+The health endpoint is used in the frontend API client:
+
+```typescript
+// frontend/lib/api.ts
+export async function checkHealth(): Promise<HealthCheckResponse> {
+  const response = await fetch(`${API_BASE_URL}/health`);
+  return response.json();
+}
+```
+
+**Usage in Components:**
+
+```typescript
+import { checkHealth } from '@/lib/api';
+
+// Verify API connectivity
+const health = await checkHealth();
+console.log(`API Status: ${health.status} (v${health.version})`);
+```
+
+---
+
+## Monitoring Best Practices
+
+### 1. Configure Health Check Intervals
+
+```yaml
+# Example: Docker Compose health check
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 40s
+```
+
+### 2. Set Up Uptime Monitoring
+
+Monitor the `/api/health` endpoint with services like:
+- **Uptime Robot**: Free tier supports 50 monitors
+- **Pingdom**: Advanced monitoring with alerting
+- **Datadog**: Full observability and APM
+- **New Relic**: Application performance monitoring
+
+### 3. Load Balancer Configuration
+
+```nginx
+# Example: Nginx upstream health check
+upstream api_backend {
+  server api1.example.com:8000;
+  server api2.example.com:8000;
+  
+  # Health check configuration
+  health_check interval=10s
+               fails=3
+               passes=2
+               uri=/api/health
+               match=health_ok;
+}
+
+match health_ok {
+  status 200;
+  body ~ "healthy";
+}
+```
+
+### 4. Kubernetes Liveness Probe
+
+```yaml
+# Example: Kubernetes deployment
+livenessProbe:
+  httpGet:
+    path: /api/status
+    port: 8000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+```
+
+---
+
+## Troubleshooting
+
+### Health Check Fails
+
+If health checks are failing:
+
+1. **Verify API is Running**
+   ```bash
+   curl http://localhost:8000/api/status
+   ```
+
+2. **Check Service Logs**
+   ```bash
+   docker logs <container-name>
+   ```
+
+3. **Test Network Connectivity**
+   ```bash
+   nc -zv localhost 8000
+   ```
+
+4. **Verify Port Binding**
+   ```bash
+   netstat -tulpn | grep 8000
+   ```
+
+### Intermittent Health Check Failures
+
+Common causes:
+- **High CPU/Memory Usage**: Service is overwhelmed
+- **Network Latency**: Timeout too aggressive
+- **Cold Start**: Container/service still initializing
+- **Rate Limiting**: Too many health check requests
+
+**Solution**: Adjust health check intervals and timeouts based on your service's performance characteristics.

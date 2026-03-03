@@ -1,0 +1,638 @@
+---
+title: System Architecture
+description: Architecture overview of Meta-Data Tag Generator
+---
+
+## Architecture Overview
+
+Meta-Data Tag Generator is a microservices-based document processing system that extracts text from PDFs, analyzes content using AI, and generates relevant metadata tags.
+
+## System Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         User / Browser                          │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Nginx Reverse Proxy                          │
+│                     (Port 80/443)                               │
+│                   [Production Only]                             │
+└──────────────┬──────────────────────────────┬───────────────────┘
+               │                              │
+               ▼                              ▼
+┌──────────────────────────┐    ┌────────────────────────────────┐
+│   Frontend (Next.js)     │    │   Backend (FastAPI)            │
+│   Port: 3001 → 3000      │◄───┤   Port: 8000                   │
+│                          │    │                                │
+│   - React UI             │    │   - REST API                   │
+│   - File upload          │    │   - PDF processing             │
+│   - Tag management       │    │   - OCR (Tesseract + EasyOCR)  │
+│   - Multi-stage build    │    │   - AI integration             │
+└──────────────────────────┘    │   - Job management             │
+                                └───┬───┬────┬───────────────────┘
+                                    │   │    │
+              ┌─────────────────────┘   │    └──────────────────┐
+              ▼                         ▼                       ▼
+┌─────────────────────────┐  ┌──────────────────┐  ┌────────────────────┐
+│  PostgreSQL Database    │  │  MinIO Storage   │  │   Redis Cache      │
+│  Port: 5432             │  │  Port: 9000/9001 │  │   Port: 6379       │
+│                         │  │                  │  │                    │
+│  - Users & auth         │  │  - PDF files     │  │  - Job states      │
+│  - Documents metadata   │  │  - OCR results   │  │  - Task queue      │
+│  - Tags & categories    │  │  - Generated     │  │  - Pub/sub         │
+│  - Processing jobs      │  │    outputs       │  │    messaging       │
+│  - Auto schema init     │  │  - S3-compatible │  │  - AOF persistence │
+└─────────────────────────┘  └──────────────────┘  └────────────────────┘
+```
+
+## Service Details
+
+### Frontend Service (Next.js)
+
+**Technology:** Next.js 14+ with React, TypeScript
+
+**Responsibilities:**
+- User interface for document upload and management
+- Display generated tags and metadata
+- Tag editing and categorization
+- User authentication flows
+- Real-time job status updates
+
+**Build Process:**
+```dockerfile
+Stage 1 (deps):    Install dependencies
+Stage 2 (builder): Build Next.js app
+Stage 3 (runner):  Production runtime (standalone output)
+```
+
+**Key Features:**
+- Multi-stage Docker build for minimal image size
+- Runs as non-root user (nextjs:nodejs)
+- Standalone output mode for optimal performance
+- Health check endpoint on port 3000
+
+**Communication:**
+- Connects to backend via `NEXT_PUBLIC_BACKEND_URL`
+- Client-side API calls to backend REST endpoints
+- WebSocket/SSE for real-time updates (if implemented)
+
+### Backend Service (FastAPI)
+
+**Technology:** Python 3.8, FastAPI, Uvicorn
+
+**Responsibilities:**
+- RESTful API for all operations
+- PDF text extraction (PyPDF2, pdfplumber)
+- OCR processing:
+  - Tesseract OCR (English, Hindi)
+  - EasyOCR (multi-language support)
+- AI-powered tag generation via OpenRouter
+- User authentication (JWT)
+- Job queue management
+- File storage orchestration
+
+**Key Components:**
+```
+backend/app/
+├── main.py              # FastAPI application
+├── config.py            # Configuration management
+├── database/
+│   ├── schema.sql       # Database schema
+│   └── models.py        # SQLAlchemy models
+├── services/
+│   ├── ocr.py          # OCR processing
+│   ├── ai.py           # LLM integration
+│   └── storage.py      # MinIO client
+└── api/
+    └── routes/         # API endpoints
+```
+
+**Resource Limits:**
+- Memory: 1GB minimum, 4GB maximum
+- Required for EasyOCR model loading and inference
+- CPU-only PyTorch for smaller footprint
+
+**Dependencies:**
+- **PostgreSQL:** User data, document metadata, job status
+- **MinIO:** File storage (upload/download)
+- **Redis:** Job state, caching, pub/sub
+
+**Startup Sequence:**
+1. Wait for PostgreSQL health check (10s intervals)
+2. Wait for MinIO health check (30s intervals)
+3. Wait for Redis health check (10s intervals)
+4. Load EasyOCR models (cached in volume)
+5. Start Uvicorn server on port 8000
+6. Health check available at `/api/health`
+
+### PostgreSQL Database
+
+**Technology:** PostgreSQL 15 Alpine
+
+**Responsibilities:**
+- Persistent storage for all structured data
+- User authentication data
+- Document metadata and relationships
+- Tag definitions and associations
+- Processing job history
+
+**Schema Initialization:**
+```yaml
+volumes:
+  - ./backend/app/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+```
+
+The schema is automatically executed on first startup.
+
+**Data Models:**
+- **users:** Authentication and profile data
+- **documents:** PDF metadata (filename, size, upload date)
+- **tags:** Generated tags with confidence scores
+- **jobs:** Processing job status and results
+- **categories:** User-defined tag categories
+
+**Health Check:**
+```bash
+pg_isready -U metatag -d metatag_db
+```
+Runs every 10s with 5 retries
+
+### MinIO Object Storage
+
+**Technology:** MinIO (S3-compatible)
+
+**Responsibilities:**
+- Store uploaded PDF files
+- Store OCR-extracted text files
+- Store processing results and artifacts
+- Serve files via presigned URLs
+
+**Buckets:**
+- `metatag-files`: All document storage
+  - `uploads/`: Original PDFs
+  - `ocr-results/`: Extracted text
+  - `exports/`: Generated outputs
+
+**Access Methods:**
+1. **API (Port 9000):** Backend service access
+2. **Console (Port 9001):** Web UI for management
+
+**S3 API Compatibility:**
+Can be replaced with AWS S3 by changing backend configuration:
+```python
+aws_access_key_id = settings.aws_access_key_id
+aws_secret_access_key = settings.aws_secret_access_key
+```
+
+### Redis
+
+**Technology:** Redis 7 Alpine
+
+**Responsibilities:**
+- Job queue state management
+- Caching AI responses (optional)
+- Pub/sub for real-time updates
+- Session storage (if needed)
+
+**Persistence:**
+```bash
+redis-server --appendonly yes
+```
+AOF (Append-Only File) enabled for durability
+
+**Use Cases:**
+1. **Job Queue:** Track processing status
+2. **Rate Limiting:** Prevent API abuse
+3. **Caching:** Store frequently accessed data
+4. **Pub/Sub:** Real-time notifications to frontend
+
+### Nginx Reverse Proxy
+
+**Technology:** Nginx Alpine (Production only)
+
+**Responsibilities:**
+- SSL/TLS termination
+- Load balancing (if scaled)
+- Static file serving
+- Request routing
+- Security headers
+
+**Routing:**
+```
+/          → Frontend (Next.js)
+/api/*     → Backend (FastAPI)
+/static/*  → Static files (nginx)
+```
+
+**Activation:**
+```bash
+docker-compose --profile production up -d
+```
+
+Only starts with the `production` profile.
+
+## Data Flow
+
+### Document Upload Flow
+
+```
+1. User uploads PDF via Frontend
+   │
+   ▼
+2. Frontend sends multipart/form-data to Backend
+   │
+   ▼
+3. Backend validates file (size, type)
+   │
+   ▼
+4. Backend stores PDF in MinIO (uploads/ folder)
+   │
+   ▼
+5. Backend creates document record in PostgreSQL
+   │
+   ▼
+6. Backend creates processing job in Redis
+   │
+   ▼
+7. Return job_id to Frontend
+```
+
+### Tag Generation Flow
+
+```
+1. Job worker picks up task from Redis
+   │
+   ▼
+2. Download PDF from MinIO
+   │
+   ▼
+3. Extract text:
+   ├─► PyPDF2 (text-based PDFs)
+   └─► Tesseract/EasyOCR (scanned PDFs)
+   │
+   ▼
+4. Text preprocessing:
+   ├─► Remove noise
+   ├─► Truncate to MAX_WORDS_FOR_AI (2000)
+   └─► Language detection
+   │
+   ▼
+5. Send to OpenRouter API (GPT-4o-mini)
+   │
+   ▼
+6. Parse AI response (JSON with tags)
+   │
+   ▼
+7. Store tags in PostgreSQL
+   │
+   ▼
+8. Update job status in Redis
+   │
+   ▼
+9. Notify Frontend via pub/sub (optional)
+```
+
+### Authentication Flow
+
+```
+1. User submits credentials to Backend
+   │
+   ▼
+2. Backend validates against PostgreSQL
+   │
+   ▼
+3. Generate JWT tokens:
+   ├─► Access token (30 min)
+   └─► Refresh token (7 days)
+   │
+   ▼
+4. Return tokens to Frontend
+   │
+   ▼
+5. Frontend stores in memory/localStorage
+   │
+   ▼
+6. Frontend includes token in Authorization header
+   │
+   ▼
+7. Backend validates JWT signature and expiry
+```
+
+## Network Architecture
+
+### Docker Network
+
+```yaml
+networks:
+  meta-tag-network:
+    driver: bridge
+```
+
+All services communicate via the `meta-tag-network` bridge network.
+
+**Internal Hostnames:**
+- `postgres:5432` - Database
+- `minio:9000` - Object storage
+- `redis:6379` - Cache
+- `backend:8000` - API server
+- `frontend:3000` - Web app
+
+**External Access:**
+- `localhost:5432` → PostgreSQL
+- `localhost:9000/9001` → MinIO
+- `localhost:6379` → Redis
+- `localhost:8000` → Backend API
+- `localhost:3001` → Frontend
+- `localhost:80/443` → Nginx (production)
+
+### Service Dependencies
+
+```yaml
+backend:
+  depends_on:
+    postgres:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+frontend:
+  depends_on:
+    - backend
+
+nginx:
+  depends_on:
+    - frontend
+    - backend
+```
+
+**Startup Order:**
+1. PostgreSQL, MinIO, Redis (parallel)
+2. Wait for all health checks to pass
+3. Backend starts (waits 40s for OCR models)
+4. Frontend starts
+5. Nginx starts (production only)
+
+## Storage Architecture
+
+### Persistent Volumes
+
+```yaml
+volumes:
+  postgres_data:      # Database files (~500MB+)
+  minio_data:         # User files (grows with usage)
+  redis_data:         # AOF logs (~100MB)
+  easyocr_models:     # Pre-trained models (~500MB)
+```
+
+**Volume Locations:**
+```bash
+# Default Docker volume path
+/var/lib/docker/volumes/meta-data-tag-generator_<volume_name>/_data
+
+# List volumes
+docker volume ls | grep meta-data-tag-generator
+
+# Inspect volume
+docker volume inspect meta-data-tag-generator_postgres_data
+```
+
+### File Organization in MinIO
+
+```
+metatag-files/
+├── uploads/
+│   └── {user_id}/
+│       └── {document_id}.pdf
+├── ocr-results/
+│   └── {document_id}/
+│       ├── page_1.txt
+│       ├── page_2.txt
+│       └── combined.txt
+└── exports/
+    └── {document_id}/
+        ├── metadata.json
+        └── tags.csv
+```
+
+## Scalability Considerations
+
+### Horizontal Scaling
+
+**Stateless Services (can scale):**
+- ✅ Backend (FastAPI)
+- ✅ Frontend (Next.js)
+- ✅ Nginx (load balancer)
+
+**Stateful Services (single instance):**
+- ⚠️ PostgreSQL (use managed service or replication)
+- ⚠️ MinIO (supports distributed mode)
+- ⚠️ Redis (use Redis Cluster for HA)
+
+**Scaling Backend:**
+```bash
+# Scale to 3 replicas
+docker-compose up -d --scale backend=3
+
+# Add load balancer in nginx.conf
+upstream backend {
+    server backend:8000;
+    server backend:8000;
+    server backend:8000;
+}
+```
+
+### Resource Requirements
+
+**Minimum (Development):**
+- 4GB RAM
+- 2 CPU cores
+- 10GB disk space
+
+**Recommended (Production):**
+- 8GB+ RAM
+- 4+ CPU cores
+- 50GB+ disk space (depends on file storage)
+
+**Per-Service Memory:**
+- PostgreSQL: ~200MB
+- MinIO: ~100MB
+- Redis: ~50MB
+- Backend: 1-4GB (OCR models)
+- Frontend: ~100MB
+- Nginx: ~10MB
+
+### Performance Optimization
+
+**Backend Optimization:**
+- Cache EasyOCR models in volume
+- Use CPU-optimized PyTorch
+- Async processing with background tasks
+- Connection pooling for PostgreSQL
+
+**Frontend Optimization:**
+- Multi-stage Docker build
+- Standalone output (minimal dependencies)
+- Static asset compression
+- CDN for static files (production)
+
+**Database Optimization:**
+- Indexed columns (user_id, document_id)
+- Connection pooling (SQLAlchemy)
+- Regular VACUUM and ANALYZE
+
+## Security Architecture
+
+### Authentication & Authorization
+
+```
+User → Frontend → Backend
+              ↓
+         JWT Validation
+              ↓
+         PostgreSQL
+```
+
+**Token Flow:**
+1. User logs in with credentials
+2. Backend generates JWT (HS256)
+3. Frontend stores token
+4. Token included in `Authorization: Bearer <token>`
+5. Backend validates signature and expiry
+6. Extract user_id from token claims
+
+### Network Security
+
+**Internal Network:**
+- All services on isolated bridge network
+- No direct external access except via exposed ports
+
+**External Exposure (Development):**
+- PostgreSQL: 5432 (disable in production)
+- MinIO: 9000, 9001 (restrict in production)
+- Redis: 6379 (disable in production)
+- Backend: 8000
+- Frontend: 3001
+
+**Production Security:**
+- Only expose ports 80/443 via Nginx
+- Use environment variables for secrets
+- Enable HTTPS/TLS
+- Change default passwords
+- Use strong JWT secret
+
+### Data Security
+
+**At Rest:**
+- PostgreSQL: Transparent data encryption (TDE) optional
+- MinIO: Server-side encryption (SSE) optional
+- Redis: AOF encrypted via disk encryption
+
+**In Transit:**
+- HTTPS via Nginx (production)
+- Internal network encrypted via Docker overlay (optional)
+- MinIO secure mode (`MINIO_SECURE=true`)
+
+## Monitoring & Health Checks
+
+### Health Check Endpoints
+
+| Service | Endpoint | Interval | Timeout |
+|---------|----------|----------|----------|
+| Backend | `http://localhost:8000/api/health` | 30s | 10s |
+| Frontend | `http://localhost:3000` | 30s | 10s |
+| PostgreSQL | `pg_isready -U metatag` | 10s | 5s |
+| MinIO | `http://localhost:9000/minio/health/live` | 30s | 10s |
+| Redis | `redis-cli ping` | 10s | 5s |
+
+### Service Status
+
+```bash
+# Check all services
+docker-compose ps
+
+# Check specific service health
+docker inspect meta-tag-backend --format='{{json .State.Health}}' | jq
+
+# View logs
+docker-compose logs -f backend
+```
+
+### Metrics to Monitor
+
+**System Metrics:**
+- CPU usage per container
+- Memory usage (especially backend)
+- Disk I/O (PostgreSQL, MinIO)
+- Network traffic
+
+**Application Metrics:**
+- Request rate (requests/second)
+- Response time (p50, p95, p99)
+- Error rate (4xx, 5xx)
+- Job queue depth (Redis)
+- Processing time per document
+
+**Business Metrics:**
+- Documents processed per day
+- Average tags per document
+- User activity (uploads, searches)
+- Storage usage (MinIO)
+
+## Disaster Recovery
+
+### Backup Strategy
+
+**PostgreSQL:**
+```bash
+# Backup
+docker-compose exec postgres pg_dump -U metatag metatag_db > backup.sql
+
+# Restore
+docker-compose exec -T postgres psql -U metatag metatag_db < backup.sql
+```
+
+**MinIO:**
+```bash
+# Backup (using mc CLI)
+mc mirror myminio/metatag-files ./backup/minio/
+
+# Restore
+mc mirror ./backup/minio/ myminio/metatag-files
+```
+
+**Redis:**
+```bash
+# Backup AOF file
+docker-compose exec redis redis-cli BGSAVE
+docker cp meta-tag-redis:/data/dump.rdb ./backup/
+```
+
+### Recovery Procedures
+
+**Complete System Recovery:**
+```bash
+# 1. Stop all services
+docker-compose down
+
+# 2. Restore volumes
+docker run --rm -v postgres_data:/data -v $(pwd):/backup \
+  alpine tar xzf /backup/postgres_backup.tar.gz -C /data
+
+# 3. Restart services
+docker-compose up -d
+
+# 4. Verify health
+docker-compose ps
+```
+
+## Next Steps
+
+- Review [Docker Compose deployment](/deployment/docker-compose)
+- Configure [environment variables](/deployment/environment-variables)
+- Set up monitoring and alerting
+- Configure automated backups
+- Review security hardening guide

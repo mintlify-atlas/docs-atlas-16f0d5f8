@@ -1,0 +1,293 @@
+---
+title: 'WebSocket Progress Observer'
+description: 'Real-time batch processing progress via WebSocket'
+api: 'WEBSOCKET /api/batch/ws/{job_id}'
+---
+
+## Overview
+
+WebSocket endpoint for observing batch processing progress in real-time. This is a **read-only observer** - processing runs independently in the background, and disconnecting the WebSocket does not cancel the job.
+
+## Connection Details
+
+**Endpoint:** `ws://localhost:8000/api/batch/ws/{job_id}`
+
+**Authentication:** Pass token as query parameter
+
+```
+ws://localhost:8000/api/batch/ws/{job_id}?token=your_access_token
+```
+
+Alternatively, you can pass the token in the `Authorization` header:
+
+```
+Authorization: Bearer your_access_token
+```
+
+## Path Parameters
+
+<ParamField path="job_id" type="string" required>
+  Unique identifier for the batch processing job. Generated when starting a job via POST /api/batch/start.
+</ParamField>
+
+## Connection Flow
+
+### 1. Client Connects
+
+Connect to the WebSocket endpoint with the job ID and authentication token.
+
+### 2. Server Sends Catchup Message
+
+On connect, the server immediately sends all results so far:
+
+<ResponseField name="type" type="string">
+  Message type: `"catchup"`
+</ResponseField>
+
+<ResponseField name="job_id" type="string">
+  The job identifier
+</ResponseField>
+
+<ResponseField name="state" type="object">
+  Current job state including status, progress, processed_count, failed_count, total
+</ResponseField>
+
+<ResponseField name="results" type="array">
+  Array of all document results processed so far
+</ResponseField>
+
+**Example:**
+```json
+{
+  "type": "catchup",
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "state": {
+    "status": "processing",
+    "progress": 0.3,
+    "processed_count": 3,
+    "failed_count": 0,
+    "total": 10
+  },
+  "results": [
+    {
+      "row_id": 0,
+      "title": "Document 1",
+      "status": "success",
+      "tags": ["tag1", "tag2"]
+    }
+  ]
+}
+```
+
+### 3. Server Streams Progress Updates
+
+As each document is processed, the server sends progress updates:
+
+<ResponseField name="type" type="string">
+  Message type: `"progress"`
+</ResponseField>
+
+<ResponseField name="job_id" type="string">
+  The job identifier
+</ResponseField>
+
+<ResponseField name="row_id" type="integer">
+  Zero-based row index in the batch
+</ResponseField>
+
+<ResponseField name="row_number" type="integer">
+  One-based row number for display (row_id + 1)
+</ResponseField>
+
+<ResponseField name="title" type="string">
+  Document title
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  Processing status: `"pending"`, `"processing"`, `"success"`, or `"failed"`
+</ResponseField>
+
+<ResponseField name="progress" type="number">
+  Overall job progress as a decimal (0.0 to 1.0)
+</ResponseField>
+
+<ResponseField name="tags" type="array" optional>
+  Generated tags (present on success)
+</ResponseField>
+
+<ResponseField name="error" type="string" optional>
+  Error message (present on failure)
+</ResponseField>
+
+<ResponseField name="error_type" type="string" optional>
+  Error category: `"rate-limit"`, `"model-error"`, `"network"`, etc.
+</ResponseField>
+
+<ResponseField name="retry_after_ms" type="integer" optional>
+  Milliseconds to wait before retry (for rate limit errors)
+</ResponseField>
+
+<ResponseField name="retry_count" type="integer" optional>
+  Current attempt number
+</ResponseField>
+
+<ResponseField name="model_name" type="string" optional>
+  AI model being used for processing
+</ResponseField>
+
+<ResponseField name="metadata" type="object" optional>
+  Additional metadata (extraction_method, is_scanned, ocr_confidence, etc.)
+</ResponseField>
+
+**Example:**
+```json
+{
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "row_id": 0,
+  "row_number": 1,
+  "title": "Training Manual",
+  "status": "success",
+  "progress": 0.1,
+  "tags": [
+    "employee-training",
+    "onboarding-procedures",
+    "workplace-safety",
+    "compliance-guidelines"
+  ],
+  "metadata": {
+    "extraction_method": "pypdf2",
+    "is_scanned": false,
+    "processing_time": 2.3
+  }
+}
+```
+
+### 4. Server Sends Completion Message
+
+When all documents are processed or the job is stopped:
+
+<ResponseField name="type" type="string">
+  Message type: `"completed"`, `"cancelled"`, or `"error"`
+</ResponseField>
+
+<ResponseField name="job_id" type="string">
+  The job identifier
+</ResponseField>
+
+<ResponseField name="processed_count" type="string">
+  Number of successfully processed documents
+</ResponseField>
+
+<ResponseField name="failed_count" type="string">
+  Number of failed documents
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Completion summary message
+</ResponseField>
+
+**Example:**
+```json
+{
+  "type": "completed",
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "processed_count": "9",
+  "failed_count": "1",
+  "message": "Job completed"
+}
+```
+
+### 5. Keepalive Messages
+
+Every 30 seconds (if no updates), the server sends a keepalive:
+
+```json
+{
+  "type": "keepalive",
+  "job_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "processing"
+}
+```
+
+## Message Types Summary
+
+| Type | When Sent | Description |
+|------|-----------|-------------|
+| `catchup` | On connection | All results and state so far |
+| `progress` | Per document | Individual document processing update |
+| `completed` | Job finished | All documents processed |
+| `cancelled` | Job cancelled | Processing stopped by user |
+| `error` | Job failed | Critical error occurred |
+| `keepalive` | Every 30s | Connection health check |
+
+## Error Responses
+
+If authentication fails:
+
+```json
+{
+  "error": "Authentication required",
+  "job_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+Connection closes with code `1008` (policy violation).
+
+## Usage Example
+
+```javascript
+const jobId = '550e8400-e29b-41d4-a716-446655440000';
+const token = 'your_access_token';
+const ws = new WebSocket(`ws://localhost:8000/api/batch/ws/${jobId}?token=${token}`);
+
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  
+  switch(data.type) {
+    case 'catchup':
+      console.log('Caught up to current state:', data.state);
+      console.log('Existing results:', data.results.length);
+      break;
+      
+    case 'progress':
+      console.log(`Document ${data.row_number}: ${data.title}`);
+      console.log(`Status: ${data.status}, Progress: ${data.progress * 100}%`);
+      if (data.tags) {
+        console.log('Tags:', data.tags);
+      }
+      break;
+      
+    case 'completed':
+      console.log('Job completed!');
+      console.log(`Success: ${data.processed_count}, Failed: ${data.failed_count}`);
+      ws.close();
+      break;
+      
+    case 'keepalive':
+      console.log('Connection alive, status:', data.status);
+      break;
+  }
+};
+
+ws.onerror = (error) => {
+  console.error('WebSocket error:', error);
+};
+
+ws.onclose = () => {
+  console.log('WebSocket closed (job continues running)');
+};
+```
+
+## Important Notes
+
+<Note>
+  Disconnecting from the WebSocket **does not** cancel the job. Processing continues in the background. Use POST /api/batch/jobs/{job_id}/cancel to stop a job.
+</Note>
+
+<Info>
+  If the job is already completed when you connect, you'll receive the catchup message followed immediately by a completion message.
+</Info>
+
+<Warning>
+  Jobs are stored in Redis with a TTL. Results are available for retrieval for a limited time after completion.
+</Warning>

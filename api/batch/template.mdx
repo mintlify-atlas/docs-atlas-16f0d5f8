@@ -1,0 +1,285 @@
+---
+title: 'CSV Template'
+description: 'Get CSV template with sample data for batch processing'
+api: 'GET /api/batch/template'
+---
+
+## Overview
+
+Returns a CSV template with sample data and column descriptions to help users prepare batch processing files. The template includes all supported columns with example values.
+
+## Authentication
+
+Requires authentication via Bearer token:
+
+```
+Authorization: Bearer your_access_token
+```
+
+## Request
+
+No request body or parameters required.
+
+```bash
+GET /api/batch/template
+```
+
+## Response
+
+<ResponseField name="template" type="string">
+  CSV template string with headers and sample rows
+</ResponseField>
+
+<ResponseField name="columns" type="array">
+  Array of column definitions
+  
+  <ResponseField name="name" type="string">
+    Column name
+  </ResponseField>
+  
+  <ResponseField name="required" type="boolean">
+    Whether the column is required
+  </ResponseField>
+  
+  <ResponseField name="description" type="string">
+    Description of the column's purpose
+  </ResponseField>
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "template": "title,description,file_source_type,file_path,publishing_date,file_size\n\"Training Manual\",\"PMSPECIAL training document\",url,https://example.com/doc1.pdf,2025-01-15,1.2MB\n\"Annual Report 2024\",\"Financial report\",url,https://example.com/doc2.pdf,2024-12-31,2.5MB",
+  "columns": [
+    {
+      "name": "title",
+      "required": true,
+      "description": "Document title"
+    },
+    {
+      "name": "description",
+      "required": false,
+      "description": "Document description"
+    },
+    {
+      "name": "file_source_type",
+      "required": true,
+      "description": "Source type: url, s3, or local"
+    },
+    {
+      "name": "file_path",
+      "required": true,
+      "description": "Path or URL to the file"
+    },
+    {
+      "name": "publishing_date",
+      "required": false,
+      "description": "Publication date"
+    },
+    {
+      "name": "file_size",
+      "required": false,
+      "description": "File size"
+    }
+  ]
+}
+```
+
+## CSV Template Format
+
+The template CSV includes the following columns:
+
+### Required Columns
+
+<ParamField path="title" type="string" required>
+  Document title. Used for identification and display.
+</ParamField>
+
+<ParamField path="file_source_type" type="string" required>
+  Source type of the file. Valid values:
+  - `url` - HTTP/HTTPS URL
+  - `s3` - Amazon S3 path
+  - `local` - Local filesystem path
+</ParamField>
+
+<ParamField path="file_path" type="string" required>
+  Path or URL to the document file.
+  
+  **Examples:**
+  - URL: `https://example.com/document.pdf`
+  - S3: `s3://bucket-name/path/to/file.pdf` or `bucket-name/path/to/file.pdf`
+  - Local: `/absolute/path/to/file.pdf`
+</ParamField>
+
+### Optional Columns
+
+<ParamField path="description" type="string">
+  Document description or summary. Used to provide additional context for tag generation.
+</ParamField>
+
+<ParamField path="publishing_date" type="string">
+  Publication or creation date. Format: YYYY-MM-DD (e.g., "2025-01-15")
+</ParamField>
+
+<ParamField path="file_size" type="string">
+  File size with unit. Examples: "1.2MB", "500KB", "2.5GB"
+</ParamField>
+
+## Sample CSV Content
+
+```csv
+title,description,file_source_type,file_path,publishing_date,file_size
+"Training Manual","PMSPECIAL training document",url,https://example.com/doc1.pdf,2025-01-15,1.2MB
+"Annual Report 2024","Financial report",url,https://example.com/doc2.pdf,2024-12-31,2.5MB
+```
+
+## Usage Example
+
+### Download Template via cURL
+
+```bash
+curl -X GET "http://localhost:8000/api/batch/template" \
+  -H "Authorization: Bearer your_access_token" \
+  | jq -r '.template' > template.csv
+```
+
+### JavaScript/TypeScript
+
+```typescript
+interface CSVColumn {
+  name: string;
+  required: boolean;
+  description: string;
+}
+
+interface TemplateResponse {
+  template: string;
+  columns: CSVColumn[];
+}
+
+async function downloadTemplate(token: string): Promise<void> {
+  const response = await fetch('http://localhost:8000/api/batch/template', {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Failed to fetch template: ${response.statusText}`);
+  }
+  
+  const data: TemplateResponse = await response.json();
+  
+  // Create downloadable file
+  const blob = new Blob([data.template], { type: 'text/csv' });
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'batch_template.csv';
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+  
+  // Display column info
+  console.log('CSV Columns:');
+  data.columns.forEach(col => {
+    const req = col.required ? '(required)' : '(optional)';
+    console.log(`  ${col.name} ${req}: ${col.description}`);
+  });
+}
+
+// Usage
+await downloadTemplate('your_access_token');
+```
+
+### Python
+
+```python
+import requests
+import csv
+from io import StringIO
+
+def download_template(token: str, output_file: str = "template.csv"):
+    response = requests.get(
+        "http://localhost:8000/api/batch/template",
+        headers={"Authorization": f"Bearer {token}"}
+    )
+    response.raise_for_status()
+    
+    data = response.json()
+    
+    # Save template to file
+    with open(output_file, 'w', newline='') as f:
+        f.write(data['template'])
+    
+    print(f"Template saved to {output_file}")
+    print("\nColumns:")
+    for col in data['columns']:
+        req = "(required)" if col['required'] else "(optional)"
+        print(f"  {col['name']} {req}: {col['description']}")
+    
+    return data
+
+# Usage
+template_data = download_template("your_access_token")
+```
+
+## Creating Your Batch CSV
+
+### Step 1: Download the Template
+
+Use the endpoint to get the template structure.
+
+### Step 2: Fill in Your Data
+
+Replace the sample rows with your actual documents:
+
+```csv
+title,description,file_source_type,file_path,publishing_date,file_size
+"Employee Handbook 2025","Updated company policies",url,https://cdn.example.com/handbook.pdf,2025-01-01,3.5MB
+"Q4 Financial Report","Quarterly earnings and analysis",s3,company-docs/reports/q4-2024.pdf,2024-12-31,1.8MB
+"Marketing Strategy","2025 marketing plan and budget",local,/data/documents/marketing-2025.pdf,2025-01-15,2.1MB
+```
+
+### Step 3: Validate Your CSV
+
+<Tip>
+  After creating your CSV, use POST /api/batch/validate-paths to verify all file paths are accessible before starting the batch job.
+</Tip>
+
+### Step 4: Process the Batch
+
+Use the CSV with POST /api/batch/start to begin processing.
+
+## CSV Formatting Guidelines
+
+<Info>
+  **Field Quoting:** Fields containing commas, quotes, or newlines must be enclosed in double quotes.
+</Info>
+
+<Info>
+  **Escape Quotes:** To include a quote character within a quoted field, use two double quotes (`""`).
+</Info>
+
+**Example with special characters:**
+
+```csv
+title,description,file_source_type,file_path,publishing_date,file_size
+"Document with, comma","Description with ""quotes""",url,https://example.com/doc.pdf,2025-01-15,1MB
+```
+
+## Additional Notes
+
+<Warning>
+  **File Source Type:** Ensure the `file_source_type` value matches the actual path format. Using `url` for an S3 path or vice versa will cause validation errors.
+</Warning>
+
+<Note>
+  **Local Paths:** Local file paths must be absolute paths accessible from the server's filesystem. Relative paths are not supported.
+</Note>
+
+<Tip>
+  **S3 Configuration:** To use S3 paths, ensure AWS credentials are configured on the server with appropriate read permissions for the specified buckets.
+</Tip>

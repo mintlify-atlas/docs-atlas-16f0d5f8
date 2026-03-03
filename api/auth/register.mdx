@@ -1,0 +1,109 @@
+---
+title: 'Register User'
+api: 'POST /api/auth/register'
+description: 'Create a new user account'
+---
+
+## Overview
+
+Register a new user account in the Meta-Data Tag Generator system. This endpoint creates a new user with email and password credentials.
+
+## Endpoint
+
+```
+POST /api/auth/register
+```
+
+## Request Body
+
+<ParamField body="email" type="string" required>
+  User's email address. Must be a valid email format.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  User's password. Must be at least 8 characters long.
+</ParamField>
+
+<ParamField body="full_name" type="string">
+  User's full name (optional).
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="UUID">
+  Unique identifier for the user.
+</ResponseField>
+
+<ResponseField name="email" type="string">
+  User's email address.
+</ResponseField>
+
+<ResponseField name="full_name" type="string">
+  User's full name (if provided).
+</ResponseField>
+
+<ResponseField name="is_active" type="boolean">
+  Whether the user account is active. Defaults to `true`.
+</ResponseField>
+
+<ResponseField name="is_verified" type="boolean">
+  Whether the user's email has been verified. Defaults to `false`.
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  Timestamp when the user account was created.
+</ResponseField>
+
+## Example Request
+
+```bash
+curl -X POST https://api.example.com/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "user@example.com",
+    "password": "securePassword123",
+    "full_name": "John Doe"
+  }'
+```
+
+## Example Response
+
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "email": "user@example.com",
+  "full_name": "John Doe",
+  "is_active": true,
+  "is_verified": false,
+  "created_at": "2026-03-03T10:30:00Z"
+}
+```
+
+## Error Responses
+
+### 400 Bad Request
+
+Returned when the email is already registered or validation fails.
+
+```json
+{
+  "detail": "Email already registered"
+}
+```
+
+### 500 Internal Server Error
+
+Returned when the registration fails due to a server error.
+
+```json
+{
+  "detail": "Failed to register user"
+}
+```
+
+## Notes
+
+- Passwords are hashed using bcrypt before storage
+- Email addresses must be unique
+- New accounts are created with `is_active=true` but `is_verified=false`
+- No authentication tokens are returned; users must call the `/login` endpoint after registration

@@ -1,0 +1,416 @@
+---
+title: Single Document Processing
+description: Upload and process individual PDF documents with real-time preview and instant tag generation
+icon: file-text
+---
+
+## Overview
+
+The single document processing feature allows you to quickly generate metadata tags for individual PDF files. Upload a document or provide a URL, configure your settings, and get AI-generated tags in seconds.
+
+<Info>
+Supports both **file uploads** (up to 50MB) and **URL-based processing** from any publicly accessible HTTP/HTTPS source.
+</Info>
+
+## How It Works
+
+<Steps>
+  <Step title="Upload Your Document">
+    Choose between two input methods:
+    
+    **File Upload**
+    - Drag and drop a PDF file onto the upload zone
+    - Or click to browse and select from your computer
+    - Maximum file size: 50MB
+    
+    **URL Input**
+    - Paste a direct link to any publicly accessible PDF
+    - Supports CloudFront URLs, S3 URLs, government portals, and more
+    - Examples:
+      - `https://example.com/document.pdf`
+      - `https://d1581jr3fp95xu.cloudfront.net/path/to/file.pdf`
+      - `https://socialjustice.gov.in/writereaddata/UploadFile/66991763713697.pdf`
+    
+    <Warning>
+    Provide **either** a file upload **or** a URL — not both.
+    </Warning>
+  </Step>
+  
+  <Step title="Preview Your Document">
+    After uploading or entering a URL, an embedded PDF viewer appears automatically:
+    
+    - **In-page preview**: 800px height iframe for quick reference
+    - **Fullscreen mode**: Click the fullscreen button to view the entire document
+    - **Keyboard shortcut**: Press `ESC` to exit fullscreen
+    
+    <Note>
+    For URL-based documents, the preview uses a CORS proxy endpoint (`/api/single/preview`) to bypass browser restrictions.
+    </Note>
+  </Step>
+  
+  <Step title="Configure Processing Settings">
+    In the configuration panel (typically on the right), set:
+    
+    - **OpenRouter API Key** (required)
+    - **Model Name** (e.g., `google/gemini-flash-1.5`, `openai/gpt-4o-mini`)
+    - **Number of Pages**: How many pages to extract (default: 3)
+    - **Number of Tags**: Target tag count (default: 8)
+    - **Exclusion List** (optional): Upload a file to filter out common terms
+  </Step>
+  
+  <Step title="Generate Tags">
+    Click **Generate Tags** to start processing:
+    
+    1. System extracts text from the PDF (PyPDF2 → Tesseract → EasyOCR fallback)
+    2. Detected language and extraction method are logged
+    3. AI analyzes the content and generates tags
+    4. Results appear below with extraction metadata
+  </Step>
+</Steps>
+
+## Document Preview Features
+
+### Standard Preview
+
+The embedded preview displays your PDF at 800px height with:
+- Native browser PDF controls (zoom, download, print)
+- Scroll support for multi-page documents
+- Automatic loading from file or URL
+
+### Fullscreen Mode
+
+<Accordion title="Fullscreen Preview Details">
+  When you click the **Fullscreen** button:
+  
+  - **Immersive View**: Dark overlay with centered PDF viewer
+  - **Modal Header**: Document icon, title, and close button
+  - **Keyboard Shortcut**: Press `ESC` to close instantly
+  - **Full Browser Window**: Maximizes PDF viewing area
+  - **Clean UI**: Gradient header with visual polish
+  
+  The fullscreen modal is implemented with:
+  ```tsx
+  // Fixed positioning covers entire viewport
+  className="fixed inset-0 z-50 bg-black bg-opacity-95"
+  
+  // ESC key listener
+  window.addEventListener('keydown', handleKeyDown)
+  ```
+</Accordion>
+
+## Processing Results
+
+### Success Banner
+
+When processing completes successfully, you'll see:
+
+<CardGroup cols={2}>
+  <Card title="Processing Time" icon="clock">
+    Displays how long the extraction and AI tagging took (e.g., "Processed in 4.2s")
+  </Card>
+  <Card title="Extraction Method" icon="wand-magic-sparkles">
+    Shows which engine was used:
+    - `pypdf2`: Text-based PDF (fastest)
+    - `tesseract_ocr`: Scanned document with Tesseract
+    - `easyocr`: Complex language document with EasyOCR
+    - `pymupdf_tesseract`: Fallback for complex embedded images
+  </Card>
+</CardGroup>
+
+### Document Metadata
+
+**Document Title**
+- Extracted from PDF metadata or first substantive line
+- Displayed prominently at top of results
+
+**OCR Status Badge**
+- **Text PDF**: Blue badge for digitally-created documents
+- **Scanned PDF**: Purple badge with confidence percentage (e.g., "Scanned PDF · 87% confidence")
+
+### Generated Tags
+
+Tags are displayed with **color-coded categories**:
+
+<Tabs>
+  <Tab title="Date Tags">
+    - Pattern: Years, months, quarters (e.g., `2024`, `q1`, `january`)
+    - Color: Date-specific highlighting
+    - Detection: Regex pattern matching on common date formats
+  </Tab>
+  <Tab title="Program Tags">
+    - Pattern: Schemes, initiatives, programs (e.g., `pmkvy`, `scholarship`)
+    - Keywords: `scheme`, `yojana`, `program`, `mission`
+    - Color: Program-specific highlighting
+  </Tab>
+  <Tab title="Location Tags">
+    - Pattern: Cities, states, districts (e.g., `delhi`, `mumbai`, `india`)
+    - Keywords: Geographic names
+    - Color: Location-specific highlighting
+  </Tab>
+  <Tab title="Document Type Tags">
+    - Pattern: Report types (e.g., `newsletter`, `circular`, `manual`)
+    - Keywords: `report`, `notification`, `guidelines`, `policy`
+    - Color: Document-specific highlighting
+  </Tab>
+  <Tab title="Entity Tags">
+    - Pattern: Organizations, people, concepts
+    - Default category for uncategorized tags
+    - Color: Entity-specific highlighting
+  </Tab>
+</Tabs>
+
+**Copy All Button**
+- Click to copy all tags as comma-separated text
+- Uses `navigator.clipboard.writeText(result.tags.join(', '))`
+- Perfect for pasting into other systems
+
+### Extracted Text Preview
+
+A scrollable preview (max 240px height) shows:
+- First few hundred characters of extracted text
+- Monospace font for readability
+- Helps verify extraction quality
+- Useful for debugging OCR issues
+
+## Smart Document Detection
+
+### Automatic OCR Triggers
+
+The system automatically uses OCR when:
+
+<AccordionGroup>
+  <Accordion title="Low Text Density">
+    If PyPDF2 extracts fewer than **150 characters per page**, the document is likely scanned.
+    
+    Example:
+    ```
+    PyPDF2 extracted 342 chars from 3 pages (avg: 114 chars/page)
+    OCR needed: true (low density)
+    ```
+  </Accordion>
+  
+  <Accordion title="Garbled Encoding Detected">
+    Legacy Indian PDFs (Krutidev, ISM fonts) map Devanagari glyphs to Latin Extended Unicode (U+00A0–U+024F).
+    
+    PyPDF2 reads these as garbage like `"ºÉÚSÉxÉÉ"`. The system detects when >25% of characters fall in this range and triggers OCR:
+    
+    ```
+    Garbled encoding detected (47% Latin-Extended chars — likely legacy Indian font)
+    OCR needed: true
+    ```
+  </Accordion>
+  
+  <Accordion title="Sparse Content">
+    If total extracted text is under **500 characters** or fewer than **50 words per page**:
+    
+    ```
+    Sparse content (38 words/page, 12% substantive lines)
+    OCR needed: true
+    ```
+  </Accordion>
+  
+  <Accordion title="No Text Lines Found">
+    If PyPDF2 returns empty or whitespace-only content:
+    
+    ```
+    OCR needed: true (no text lines found)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Hybrid OCR Strategy
+
+When OCR is needed, the system uses a 3-tier approach:
+
+<Steps>
+  <Step title="Tesseract OCR (Fast Path)">
+    - **Speed**: ~2-5 seconds per page at 300 DPI
+    - **Languages**: Hindi, English, Kannada, Tamil, Telugu, Bengali, etc.
+    - **Confidence Threshold**: If confidence ≥60%, Tesseract result is used
+    - **Preprocessing**: Grayscale conversion + contrast enhancement (2.0x)
+  </Step>
+  
+  <Step title="EasyOCR (High Accuracy Fallback)">
+    Triggered when:
+    - Tesseract confidence &lt;60%
+    - Tesseract extracted &lt;100 chars
+    - Complex Indian scripts detected
+    
+    **Features**:
+    - **80+ languages** including all major Indian languages
+    - **CNN + LSTM neural networks** for superior accuracy
+    - **Subprocess isolation**: Runs in separate process to prevent OOM crashes
+    - **Image resizing**: Max 1500px dimension to prevent memory issues
+    - **Timeout**: 120-second limit per document
+  </Step>
+  
+  <Step title="PyMuPDF Fallback (Last Resort)">
+    Used when pdf2image produces blank frames (eOffice PDFs, JBIG2/CCITT compression):
+    
+    - **Renderer**: PyMuPDF (fitz) instead of Poppler
+    - **Handles**: Unusual XObject structures, embedded image overlays
+    - **OCR Engine**: Tesseract on PyMuPDF-rendered images
+  </Step>
+</Steps>
+
+## Input Validation
+
+### Pre-Submission Checks
+
+The **Generate Tags** button is disabled unless:
+
+<Checklist>
+  <li>File uploaded OR URL entered (not both)</li>
+  <li>OpenRouter API key configured</li>
+  <li>Model name specified</li>
+  <li>URL (if provided) starts with `http://` or `https://`</li>
+</Checklist>
+
+Error messages appear above the button when validation fails:
+
+```tsx
+// Example error states
+"Please select a PDF file or enter a PDF URL"
+"Please provide either a file or a URL, not both"
+"URL must start with http:// or https://"
+"Please enter your OpenRouter API key in the configuration panel"
+```
+
+## Reset and Refresh
+
+### Refresh Button
+
+Click the **Refresh** button (top-right) to:
+- Clear the current PDF upload
+- Remove URL input
+- Reset results display
+- Clear error messages
+- **Preserve** configuration settings (API key, model, exclusion list)
+
+The button is disabled when no document is loaded.
+
+## URL Processing Details
+
+### Supported URL Types
+
+<CardGroup cols={2}>
+  <Card title="Direct PDF URLs" icon="link">
+    `https://example.com/document.pdf`
+    
+    Standard web-hosted PDFs
+  </Card>
+  <Card title="CloudFront URLs" icon="cloud">
+    `https://d1581jr3fp95xu.cloudfront.net/path/to/file.pdf`
+    
+    AWS CloudFront distributions
+  </Card>
+  <Card title="S3 Public URLs" icon="database">
+    `https://bucket.s3.region.amazonaws.com/file.pdf`
+    
+    Publicly accessible S3 objects
+  </Card>
+  <Card title="Government Sites" icon="landmark">
+    `https://socialjustice.gov.in/writereaddata/UploadFile/66991763713697.pdf`
+    
+    Institutional document repositories
+  </Card>
+</CardGroup>
+
+### Backend Download Process
+
+```python
+# Backend implementation details
+- Timeout: 60 seconds
+- Max file size: 50MB
+- User-Agent: Custom header to avoid blocks
+- CORS proxy: /api/single/preview endpoint for frontend
+```
+
+## API Endpoint
+
+**`POST /api/single/process`**
+
+Form data fields:
+- `pdf_file`: File object (optional)
+- `pdf_url`: String (optional)
+- `config`: JSON string with `TaggingConfig`
+- `exclusion_file`: File object (optional)
+
+Response:
+```json
+{
+  "success": true,
+  "document_title": "Training Manual 2024",
+  "tags": ["pmkvy", "skill-development", "2024", "training", ...],
+  "extracted_text_preview": "First 500 chars...",
+  "processing_time": 4.2,
+  "is_scanned": false,
+  "extraction_method": "pypdf2",
+  "ocr_confidence": null,
+  "detected_language": "en",
+  "language_name": "English"
+}
+```
+
+## Best Practices
+
+<Tip>
+**For faster processing:**
+- Use text-based PDFs when possible (avoid scanned documents)
+- Reduce `num_pages` to 1-2 for long documents
+- Choose faster models like `google/gemini-flash-1.5`
+</Tip>
+
+<Tip>
+**For better accuracy:**
+- Use URL input for documents already hosted online (avoids upload time)
+- Provide exclusion lists to filter common terms
+- Increase `num_pages` for more comprehensive analysis
+</Tip>
+
+<Warning>
+**Common issues:**
+- **CORS errors**: URL preview may not work if the source blocks cross-origin requests
+- **Timeout**: Very large files (>50MB) or slow networks may fail
+- **Encoding errors**: Some legacy PDFs may require OCR even if they contain text
+</Warning>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Preview shows blank page">
+    **Cause**: Source URL blocks embedding or CORS restrictions
+    
+    **Solution**:
+    - The proxy endpoint (`/api/single/preview`) should handle most cases
+    - If preview fails, you can still process the document
+    - Processing uses server-side download (not affected by CORS)
+  </Accordion>
+  
+  <Accordion title="No tags generated">
+    **Cause**: AI response parsing failed
+    
+    **Solution**:
+    - Check the "Raw AI Response" debug section (shown when available)
+    - Verify your API key has credits
+    - Try a different model (some models format responses differently)
+  </Accordion>
+  
+  <Accordion title="OCR confidence very low">
+    **Cause**: Poor scan quality, complex layouts, or unsupported scripts
+    
+    **Solution**:
+    - System automatically tries EasyOCR as fallback
+    - Check extracted text preview to verify content quality
+    - Consider preprocessing the PDF (increase contrast, remove noise)
+  </Accordion>
+  
+  <Accordion title="Processing takes too long">
+    **Cause**: Large file, OCR processing, or slow AI model
+    
+    **Solution**:
+    - Reduce `num_pages` in configuration
+    - Use faster models (Gemini Flash instead of GPT-4)
+    - Ensure good network connection for URL-based documents
+  </Accordion>
+</AccordionGroup>

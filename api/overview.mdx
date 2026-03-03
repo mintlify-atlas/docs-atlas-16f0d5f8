@@ -1,0 +1,334 @@
+---
+title: API overview
+description: Complete reference for the Meta-Data Tag Generator REST API
+---
+
+The Meta-Data Tag Generator provides a comprehensive REST API for processing PDF documents and extracting AI-powered metadata tags. The API is built with FastAPI and supports both synchronous and real-time WebSocket operations.
+
+## Base URL
+
+```
+http://localhost:8000
+```
+
+All API endpoints are prefixed with `/api` except the root endpoint.
+
+## API Version
+
+Current version: **2.0.0**
+
+You can check the API version and status at the root endpoint:
+
+```bash
+curl http://localhost:8000
+```
+
+Response:
+```json
+{
+  "message": "Document Meta-Tagging API",
+  "version": "2.0.0"
+}
+```
+
+## API Structure
+
+The API is organized into the following sections:
+
+<CardGroup cols={2}>
+  <Card title="Single Document" icon="file-pdf" href="/api/single/process">
+    Process individual PDF files with AI-powered tagging
+  </Card>
+  <Card title="Batch Processing" icon="files" href="/api/batch/websocket">
+    Process multiple documents with real-time progress updates
+  </Card>
+  <Card title="User Management" icon="user" href="/api/auth/register">
+    User registration, login, and token management
+  </Card>
+  <Card title="Health & Status" icon="heart-pulse" href="/api/health">
+    System health checks and monitoring endpoints
+  </Card>
+</CardGroup>
+
+## Authentication
+
+Most endpoints require JWT authentication. See the [Authentication](/api/authentication) page for details on obtaining and using access tokens.
+
+**Public endpoints** (no authentication required):
+- `POST /api/auth/register` - User registration
+- `POST /api/auth/login` - User login
+- `GET /api/health` - Health check
+- `GET /api/status` - Status check
+
+**Protected endpoints** (require JWT token):
+- All `/api/single/*` endpoints
+- All `/api/batch/*` endpoints
+- `GET /api/auth/me` - Get current user
+- `POST /api/auth/refresh` - Refresh access token
+
+## Request Format
+
+All API requests use standard HTTP methods:
+- `GET` - Retrieve data
+- `POST` - Create or process data
+- WebSocket - Real-time bidirectional communication
+
+### Content Types
+
+The API supports the following content types:
+
+<Tabs>
+  <Tab title="JSON">
+    ```bash
+    curl -X POST http://localhost:8000/api/batch/validate-paths \
+      -H "Content-Type: application/json" \
+      -H "Authorization: Bearer YOUR_TOKEN" \
+      -d '{"paths": [{"path": "https://example.com/doc.pdf", "type": "url"}]}'
+    ```
+  </Tab>
+  <Tab title="Multipart Form Data">
+    ```bash
+    curl -X POST http://localhost:8000/api/single/process \
+      -H "Authorization: Bearer YOUR_TOKEN" \
+      -F "pdf_file=@document.pdf" \
+      -F 'config={"api_key":"sk-xxx","model_name":"openai/gpt-4o-mini","num_pages":3,"num_tags":8}'
+    ```
+  </Tab>
+</Tabs>
+
+## Response Format
+
+All API responses are JSON-formatted with consistent structure:
+
+### Success Response
+
+```json
+{
+  "success": true,
+  "data": {
+    // Endpoint-specific data
+  }
+}
+```
+
+### Error Response
+
+```json
+{
+  "detail": "Error message describing what went wrong"
+}
+```
+
+### HTTP Status Codes
+
+| Status | Meaning | Description |
+|--------|---------|-------------|
+| 200 | OK | Request successful |
+| 400 | Bad Request | Invalid request parameters |
+| 401 | Unauthorized | Missing or invalid authentication token |
+| 403 | Forbidden | Insufficient permissions |
+| 404 | Not Found | Resource not found |
+| 500 | Internal Server Error | Server-side error |
+
+## Rate Limits
+
+<Note>
+The API does not currently implement rate limiting at the application level. However, your OpenRouter API key will have its own rate limits based on your plan.
+</Note>
+
+Best practices:
+- Use batch processing for multiple documents instead of sequential single requests
+- Implement exponential backoff for retries
+- Monitor your OpenRouter usage dashboard
+
+## CORS Configuration
+
+The API is configured with permissive CORS settings for development:
+
+```python
+allow_origins=["*"]
+allow_credentials=True
+allow_methods=["*"]
+allow_headers=["*"]
+```
+
+<Warning>
+In production, configure CORS to allow only your frontend domain for security.
+</Warning>
+
+## Endpoint Categories
+
+### Single Document Processing
+
+Process individual PDF files via upload or URL:
+- `POST /api/single/process` - Process single PDF
+- `GET /api/single/preview` - Preview PDF from URL
+
+### Batch Processing
+
+Process multiple documents with real-time progress:
+- `WebSocket /api/batch/ws/{job_id}` - Real-time batch processing
+- `POST /api/batch/validate-paths` - Validate file paths
+- `GET /api/batch/template` - Get CSV template
+- `POST /api/batch/process` - Legacy batch processing
+
+### User Management
+
+Manage user accounts and authentication:
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - User login
+- `POST /api/auth/refresh` - Refresh access token
+- `GET /api/auth/me` - Get current user
+
+### Health & Monitoring
+
+Check system health and status:
+- `GET /api/health` - Comprehensive health check
+- `GET /api/status` - Simple status check
+
+## WebSocket Endpoints
+
+The API supports WebSocket connections for real-time batch processing:
+
+```
+ws://localhost:8000/api/batch/ws/{job_id}
+```
+
+WebSocket connections support query parameter or header-based authentication:
+
+```javascript
+// Query parameter auth
+const ws = new WebSocket('ws://localhost:8000/api/batch/ws/my-job-id?token=YOUR_JWT_TOKEN');
+
+// Or header-based auth (if supported by client)
+const ws = new WebSocket('ws://localhost:8000/api/batch/ws/my-job-id');
+ws.onopen = () => {
+  ws.send(JSON.stringify({
+    type: 'auth',
+    token: 'YOUR_JWT_TOKEN'
+  }));
+};
+```
+
+## External APIs
+
+The system integrates with the following external services:
+
+### OpenRouter API
+
+**Endpoint**: `https://openrouter.ai/api/v1/chat/completions`
+
+Used for AI-powered tag generation. You must provide your own OpenRouter API key.
+
+<Info>
+Get your API key at [openrouter.ai/keys](https://openrouter.ai/keys)
+</Info>
+
+### OCR Engines
+
+- **Tesseract OCR**: Local CLI tool for fast text extraction (Hindi + English)
+- **EasyOCR**: Deep learning OCR for 80+ languages (automatic fallback)
+
+### Optional Integrations
+
+- **AWS S3**: For batch processing from S3 buckets (requires AWS credentials)
+- **MinIO**: Local object storage for file persistence
+- **PostgreSQL**: User data and document history
+- **Redis**: Job state persistence and pub/sub
+
+## SDK Examples
+
+While there's no official SDK, you can easily integrate with the API using standard HTTP clients:
+
+<CodeGroup>
+```python Python
+import requests
+
+BASE_URL = "http://localhost:8000"
+
+def process_pdf(file_path: str, api_key: str):
+    with open(file_path, 'rb') as f:
+        files = {'pdf_file': f}
+        data = {
+            'config': json.dumps({
+                'api_key': api_key,
+                'model_name': 'openai/gpt-4o-mini',
+                'num_pages': 3,
+                'num_tags': 8
+            })
+        }
+        response = requests.post(
+            f"{BASE_URL}/api/single/process",
+            files=files,
+            data=data,
+            headers={'Authorization': f'Bearer {jwt_token}'}
+        )
+        return response.json()
+```
+
+```javascript JavaScript
+const BASE_URL = 'http://localhost:8000';
+
+async function processPDF(file, apiKey, jwtToken) {
+  const formData = new FormData();
+  formData.append('pdf_file', file);
+  formData.append('config', JSON.stringify({
+    api_key: apiKey,
+    model_name: 'openai/gpt-4o-mini',
+    num_pages: 3,
+    num_tags: 8
+  }));
+
+  const response = await fetch(`${BASE_URL}/api/single/process`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${jwtToken}`
+    },
+    body: formData
+  });
+
+  return response.json();
+}
+```
+
+```bash cURL
+curl -X POST http://localhost:8000/api/single/process \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+  -F "pdf_file=@document.pdf" \
+  -F 'config={"api_key":"sk-xxx","model_name":"openai/gpt-4o-mini","num_pages":3,"num_tags":8}'
+```
+</CodeGroup>
+
+## API Changelog
+
+### Version 2.0.0 (Current)
+- Added user authentication with JWT tokens
+- Added document history tracking
+- Added WebSocket support for real-time batch processing
+- Added path validation endpoint
+- Added Redis for job state persistence
+- Improved error handling and retry logic
+
+### Version 1.0.0
+- Initial release
+- Single document processing
+- Legacy batch processing
+- OCR support (Tesseract + EasyOCR)
+- OpenRouter integration
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication Guide" icon="lock" href="/api/authentication">
+    Learn how to authenticate API requests
+  </Card>
+  <Card title="Process a Document" icon="file-pdf" href="/api/single/process">
+    Start processing PDF documents
+  </Card>
+  <Card title="Batch Processing" icon="files" href="/api/batch/websocket">
+    Process multiple documents at once
+  </Card>
+  <Card title="User Management" icon="user" href="/api/auth/register">
+    Create and manage user accounts
+  </Card>
+</CardGroup>

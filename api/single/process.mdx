@@ -1,0 +1,333 @@
+---
+title: 'POST /api/single/process'
+description: 'Process a single PDF document and generate AI-powered metadata tags'
+---
+
+## Endpoint
+
+```
+POST /api/single/process
+```
+
+## Authentication
+
+This endpoint requires authentication. Include a valid JWT token in the Authorization header:
+
+```
+Authorization: Bearer <your_token>
+```
+
+## Description
+
+Processes a single PDF file and generates AI-powered metadata tags. Supports both file uploads and URL-based document retrieval with automatic OCR for scanned documents.
+
+## Request
+
+### Content Type
+
+```
+multipart/form-data
+```
+
+### Parameters
+
+<ParamField body="pdf_file" type="file" optional>
+  PDF file to process (optional if `pdf_url` is provided)
+  
+  - Must have `.pdf` extension
+  - Cannot be empty
+  - Cannot be used together with `pdf_url`
+</ParamField>
+
+<ParamField body="pdf_url" type="string" optional>
+  URL to download PDF from (optional if `pdf_file` is provided)
+  
+  - Must start with `http://` or `https://`
+  - Cannot be used together with `pdf_file`
+  - Examples: CloudFront URLs, S3 URLs, direct file links
+  - 60-second timeout, 50MB limit
+</ParamField>
+
+<ParamField body="config" type="string" required>
+  JSON string containing tagging configuration
+  
+  **Schema (TaggingConfig):**
+  
+  <Expandable title="TaggingConfig Schema">
+    <ParamField body="api_key" type="string" required>
+      OpenRouter API key for AI model access
+    </ParamField>
+    
+    <ParamField body="model_name" type="string" default="openai/gpt-4o-mini">
+      AI model to use for tag generation
+      
+      Examples: `openai/gpt-4o-mini`, `google/gemini-flash-1.5`
+    </ParamField>
+    
+    <ParamField body="num_pages" type="integer" default={3}>
+      Number of PDF pages to extract and analyze
+      
+      - Minimum: 1
+      - Maximum: 10
+    </ParamField>
+    
+    <ParamField body="num_tags" type="integer" default={8}>
+      Number of tags to generate
+      
+      - Minimum: 3
+      - Maximum: 15
+    </ParamField>
+    
+    <ParamField body="exclusion_words" type="array" optional>
+      List of words/phrases to exclude from generated tags
+      
+      Example: `["government-india", "annual-report", "newsletter"]`
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+<ParamField body="exclusion_file" type="file" optional>
+  File containing words/phrases to exclude from tags
+  
+  - Supported formats: `.txt`, `.pdf`
+  - One term per line or comma-separated
+  - Lines starting with `#` are treated as comments
+  - Merged with `config.exclusion_words` if both provided
+</ParamField>
+
+### Example Request Body
+
+```json
+{
+  "pdf_file": "<binary data>",
+  "config": "{\"api_key\":\"sk-or-v1-...\",\"model_name\":\"openai/gpt-4o-mini\",\"num_pages\":3,\"num_tags\":8,\"exclusion_words\":[\"government\",\"report\"]}"
+}
+```
+
+## Response
+
+### Success Response (200 OK)
+
+<ResponseField name="success" type="boolean" required>
+  Indicates if processing was successful
+</ResponseField>
+
+<ResponseField name="document_title" type="string" required>
+  Extracted document title from PDF metadata or filename
+</ResponseField>
+
+<ResponseField name="tags" type="array" required>
+  Array of generated metadata tags
+  
+  Example: `["digital-governance", "e-learning", "skill-development"]`
+</ResponseField>
+
+<ResponseField name="extracted_text_preview" type="string" required>
+  First 500 characters of extracted text from the document
+</ResponseField>
+
+<ResponseField name="processing_time" type="number" required>
+  Total processing time in seconds (rounded to 2 decimal places)
+</ResponseField>
+
+<ResponseField name="is_scanned" type="boolean" optional>
+  Indicates if the document was detected as a scanned PDF requiring OCR
+</ResponseField>
+
+<ResponseField name="extraction_method" type="string" optional>
+  Method used for text extraction
+  
+  Possible values:
+  - `pypdf2` - Text-based extraction
+  - `tesseract_ocr` - Fast OCR for scanned documents
+  - `easyocr` - Advanced OCR for complex scripts
+</ResponseField>
+
+<ResponseField name="ocr_confidence" type="number" optional>
+  OCR confidence score (0-100) if OCR was used
+</ResponseField>
+
+<ResponseField name="raw_ai_response" type="string" optional>
+  Raw response from AI model (for debugging)
+</ResponseField>
+
+<ResponseField name="error" type="string" optional>
+  Error message if processing failed (always null on success)
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "document_title": "Training Manual for Digital Governance",
+  "tags": [
+    "digital-governance",
+    "e-learning",
+    "skill-development",
+    "capacity-building",
+    "training-manual",
+    "best-practices",
+    "implementation-guide",
+    "knowledge-sharing"
+  ],
+  "extracted_text_preview": "Chapter 1: Introduction to Digital Governance\n\nDigital governance encompasses the policies, procedures, and frameworks that guide the use of digital technologies in government operations. This manual provides comprehensive training on implementing digital governance initiatives at the state and local levels...",
+  "processing_time": 4.23,
+  "is_scanned": false,
+  "extraction_method": "pypdf2",
+  "ocr_confidence": null,
+  "raw_ai_response": "digital-governance, e-learning, skill-development, capacity-building, training-manual, best-practices, implementation-guide, knowledge-sharing",
+  "error": null
+}
+```
+
+## Error Responses
+
+### 400 Bad Request
+
+**Both file and URL provided:**
+```json
+{
+  "detail": "Please provide either a PDF file OR a URL, not both."
+}
+```
+
+**Neither file nor URL provided:**
+```json
+{
+  "detail": "Please provide either a PDF file or a PDF URL."
+}
+```
+
+**Invalid file type:**
+```json
+{
+  "detail": "Invalid file type. Please upload a PDF file."
+}
+```
+
+**Invalid URL format:**
+```json
+{
+  "detail": "Invalid URL. Must start with http:// or https://"
+}
+```
+
+**Invalid config JSON:**
+```json
+{
+  "detail": "Invalid config JSON format"
+}
+```
+
+**Insufficient text extracted:**
+```json
+{
+  "detail": "Could not extract sufficient text from PDF. The document might be scanned or image-based without OCR support."
+}
+```
+
+### 401 Unauthorized
+
+```json
+{
+  "detail": "Not authenticated"
+}
+```
+
+### 500 Internal Server Error
+
+```json
+{
+  "detail": "Tag generation failed: <error message>"
+}
+```
+
+## Example Usage
+
+### Using cURL with File Upload
+
+```bash
+curl -X POST "http://localhost:8000/api/single/process" \
+  -H "Authorization: Bearer <your_token>" \
+  -F "pdf_file=@/path/to/document.pdf" \
+  -F 'config={"api_key":"sk-or-v1-...","model_name":"openai/gpt-4o-mini","num_pages":3,"num_tags":8}'
+```
+
+### Using cURL with URL
+
+```bash
+curl -X POST "http://localhost:8000/api/single/process" \
+  -H "Authorization: Bearer <your_token>" \
+  -F "pdf_url=https://example.com/document.pdf" \
+  -F 'config={"api_key":"sk-or-v1-...","model_name":"openai/gpt-4o-mini","num_pages":3,"num_tags":8}'
+```
+
+### Using cURL with Exclusion List
+
+```bash
+curl -X POST "http://localhost:8000/api/single/process" \
+  -H "Authorization: Bearer <your_token>" \
+  -F "pdf_file=@/path/to/document.pdf" \
+  -F 'config={"api_key":"sk-or-v1-...","model_name":"openai/gpt-4o-mini","num_pages":3,"num_tags":8}' \
+  -F "exclusion_file=@/path/to/exclusion-list.txt"
+```
+
+### Using JavaScript (fetch)
+
+```javascript
+const formData = new FormData();
+formData.append('pdf_file', pdfFile); // File object
+
+const config = {
+  api_key: 'sk-or-v1-...',
+  model_name: 'openai/gpt-4o-mini',
+  num_pages: 3,
+  num_tags: 8,
+  exclusion_words: ['government', 'report']
+};
+formData.append('config', JSON.stringify(config));
+
+const response = await fetch('http://localhost:8000/api/single/process', {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${token}`
+  },
+  body: formData
+});
+
+const result = await response.json();
+console.log('Generated tags:', result.tags);
+```
+
+## Features
+
+### Automatic OCR Detection
+
+The endpoint automatically detects scanned PDFs and applies OCR using a 3-tier strategy:
+
+1. **PyPDF2** (fastest) - Tries text-based extraction first
+2. **Tesseract OCR** (fast) - Fallback for scanned documents, good for Hindi/English
+3. **EasyOCR** (most accurate) - Automatic fallback if Tesseract confidence < 60%
+
+### Exclusion List Filtering
+
+The system uses a two-layer approach to filter excluded terms:
+
+1. **Pre-generation**: AI is instructed to avoid excluded terms
+2. **Post-processing**: Any excluded terms that slip through are filtered out
+
+**Guaranteed tag count**: If you request 8 tags and 2 get filtered, you still get 8 tags (system requests extra tags from AI to compensate).
+
+### Language Support
+
+Supports 80+ languages including:
+- Hindi, Tamil, Telugu, Bengali, Kannada, Malayalam, Marathi, Gujarati, Punjabi
+- English, Spanish, French, German, Chinese, Japanese, Korean
+- And many more via EasyOCR
+
+## Source Code
+
+Implementation: `backend/app/routers/single.py:25`
+
+Models: `backend/app/models.py:8` (TaggingConfig), `backend/app/models.py:24` (SinglePDFResponse)

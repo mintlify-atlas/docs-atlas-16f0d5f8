@@ -1,0 +1,371 @@
+---
+title: Docker Compose Deployment
+description: Deploy Meta-Data Tag Generator using Docker Compose
+---
+
+## Overview
+
+The Meta-Data Tag Generator uses Docker Compose to orchestrate multiple services including PostgreSQL, MinIO, Redis, backend API, and frontend application.
+
+## Prerequisites
+
+- Docker Engine 20.10+
+- Docker Compose 2.0+
+- At least 4GB of available RAM
+- 10GB of available disk space
+
+## Quick Start
+
+```bash
+# Clone the repository
+git clone <repository-url>
+cd meta-data-tag-generator
+
+# Start all services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Stop all services
+docker-compose down
+```
+
+## Services Overview
+
+The stack includes 6 services:
+
+| Service | Container Name | Ports | Description |
+|---------|---------------|-------|-------------|
+| postgres | meta-tag-postgres | 5432 | PostgreSQL 15 database |
+| minio | meta-tag-minio | 9000, 9001 | Object storage for files |
+| redis | meta-tag-redis | 6379 | Job state and pub/sub |
+| backend | meta-tag-backend | 8000 | FastAPI application |
+| frontend | meta-tag-frontend | 3001 | Next.js web interface |
+| nginx | meta-tag-nginx | 80, 443 | Reverse proxy (production) |
+
+## Service Configuration
+
+### PostgreSQL Database
+
+```yaml
+postgres:
+  image: postgres:15-alpine
+  container_name: meta-tag-postgres
+  ports:
+    - "5432:5432"
+  environment:
+    POSTGRES_USER: metatag
+    POSTGRES_PASSWORD: metatag_secret
+    POSTGRES_DB: metatag_db
+  volumes:
+    - postgres_data:/var/lib/postgresql/data
+    - ./backend/app/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U metatag -d metatag_db"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 10s
+```
+
+**Features:**
+- Automatic schema initialization from `schema.sql`
+- Health checks to ensure database readiness
+- Persistent data storage in named volume
+- Alpine-based for minimal footprint
+
+### MinIO Object Storage
+
+```yaml
+minio:
+  image: minio/minio:latest
+  container_name: meta-tag-minio
+  ports:
+    - "9000:9000"  # API
+    - "9001:9001"  # Console
+  environment:
+    MINIO_ROOT_USER: minioadmin
+    MINIO_ROOT_PASSWORD: minioadmin123
+  volumes:
+    - minio_data:/data
+  command: server /data --console-address ":9001"
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+```
+
+**Access:**
+- API: http://localhost:9000
+- Console: http://localhost:9001
+- Default credentials: minioadmin / minioadmin123
+
+### Redis
+
+```yaml
+redis:
+  image: redis:7-alpine
+  container_name: meta-tag-redis
+  ports:
+    - "6379:6379"
+  volumes:
+    - redis_data:/data
+  command: redis-server --appendonly yes
+  healthcheck:
+    test: ["CMD", "redis-cli", "ping"]
+    interval: 10s
+    timeout: 5s
+    retries: 3
+```
+
+**Features:**
+- AOF persistence enabled
+- Used for job state and pub/sub messaging
+
+### Backend Service
+
+```yaml
+backend:
+  build:
+    context: ./backend
+    dockerfile: Dockerfile
+  container_name: meta-tag-backend
+  ports:
+    - "8000:8000"
+  volumes:
+    - ./backend/app:/app/app  # Development hot-reload
+    - easyocr_models:/root/.EasyOCR  # Persist OCR models
+  deploy:
+    resources:
+      limits:
+        memory: 4G
+      reservations:
+        memory: 1G
+  depends_on:
+    postgres:
+      condition: service_healthy
+    minio:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 40s
+```
+
+**Key Features:**
+- Resource limits: 4GB max, 1GB reserved
+- EasyOCR models cached to avoid re-downloading
+- Waits for all dependencies to be healthy
+- 40s start period for model initialization
+
+### Frontend Service
+
+```yaml
+frontend:
+  build:
+    context: ./frontend
+    dockerfile: Dockerfile
+  container_name: meta-tag-frontend
+  ports:
+    - "3001:3000"
+  environment:
+    - NEXT_PUBLIC_BACKEND_URL=http://backend:8000
+  depends_on:
+    - backend
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:3000"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 40s
+```
+
+**Access:**
+- Frontend UI: http://localhost:3001
+- Multi-stage build for optimized production image
+
+### Nginx Reverse Proxy (Production)
+
+```yaml
+nginx:
+  image: nginx:alpine
+  container_name: meta-tag-nginx
+  ports:
+    - "80:80"
+    - "443:443"
+  volumes:
+    - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    - ./nginx/ssl:/etc/nginx/ssl:ro
+  depends_on:
+    - frontend
+    - backend
+  profiles:
+    - production
+```
+
+**Usage:**
+```bash
+# Start with nginx (production profile)
+docker-compose --profile production up -d
+```
+
+## Persistent Volumes
+
+The following named volumes persist data across container restarts:
+
+```yaml
+volumes:
+  postgres_data:      # Database files
+  minio_data:         # Uploaded files
+  redis_data:         # Redis AOF logs
+  easyocr_models:     # Cached OCR models
+```
+
+**Backup volumes:**
+```bash
+# Backup
+docker run --rm -v meta-data-tag-generator_postgres_data:/data -v $(pwd):/backup \
+  alpine tar czf /backup/postgres_backup.tar.gz -C /data .
+
+# Restore
+docker run --rm -v meta-data-tag-generator_postgres_data:/data -v $(pwd):/backup \
+  alpine tar xzf /backup/postgres_backup.tar.gz -C /data
+```
+
+## Development vs Production
+
+### Development Mode
+
+```bash
+# Start with code hot-reload
+docker-compose up -d
+
+# Backend code changes will auto-reload
+# Frontend requires rebuild
+```
+
+The backend service mounts `./backend/app` for live code updates.
+
+### Production Mode
+
+```yaml
+# Comment out volume mount in docker-compose.yml
+backend:
+  volumes:
+    # - ./backend/app:/app/app  # Remove this line
+    - easyocr_models:/root/.EasyOCR
+```
+
+```bash
+# Start with production profile
+docker-compose --profile production up -d
+```
+
+## Health Checks
+
+All services include health checks:
+
+```bash
+# Check service health
+docker-compose ps
+
+# View specific service health
+docker inspect meta-tag-backend --format='{{json .State.Health}}'
+```
+
+Health endpoints:
+- Backend: http://localhost:8000/api/health
+- Frontend: http://localhost:3001
+- PostgreSQL: `pg_isready -U metatag -d metatag_db`
+- MinIO: http://localhost:9000/minio/health/live
+- Redis: `redis-cli ping`
+
+## Troubleshooting
+
+### Backend fails to start
+
+```bash
+# Check if dependencies are healthy
+docker-compose ps
+
+# View backend logs
+docker-compose logs backend
+
+# Common issue: insufficient memory
+# Increase Docker memory limit to 6GB+
+```
+
+### Database connection errors
+
+```bash
+# Verify PostgreSQL is ready
+docker-compose exec postgres pg_isready -U metatag
+
+# Check environment variables
+docker-compose exec backend env | grep DB_
+```
+
+### MinIO bucket not found
+
+```bash
+# Access MinIO console at http://localhost:9001
+# Login: minioadmin / minioadmin123
+# Create bucket named 'metatag-files'
+
+# Or use mc CLI
+docker run --rm --network meta-tag-network minio/mc alias set myminio http://minio:9000 minioadmin minioadmin123
+docker run --rm --network meta-tag-network minio/mc mb myminio/metatag-files
+```
+
+### Port conflicts
+
+```bash
+# Check what's using the port
+sudo lsof -i :8000
+
+# Modify port mapping in docker-compose.yml
+ports:
+  - "8080:8000"  # Use 8080 instead
+```
+
+## Useful Commands
+
+```bash
+# Start services
+docker-compose up -d
+
+# Stop services
+docker-compose down
+
+# Stop and remove volumes (DELETES DATA)
+docker-compose down -v
+
+# Rebuild specific service
+docker-compose build backend
+docker-compose up -d backend
+
+# View logs
+docker-compose logs -f backend
+
+# Execute command in container
+docker-compose exec backend python -m pytest
+
+# Scale services (if stateless)
+docker-compose up -d --scale backend=3
+
+# View resource usage
+docker stats
+```
+
+## Next Steps
+
+- Configure [environment variables](/deployment/environment-variables) for production
+- Review [system architecture](/deployment/architecture)
+- Set up monitoring and logging
+- Configure SSL certificates for nginx

@@ -1,0 +1,497 @@
+---
+title: 'AI Models and OpenRouter Setup'
+description: 'Configure AI models and OpenRouter API for document tag generation'
+icon: 'brain'
+---
+
+Learn how to configure AI models, set up OpenRouter API access, and choose the best model for your document processing needs.
+
+## OpenRouter Overview
+
+The Meta-Data Tag Generator uses [OpenRouter](https://openrouter.ai) to access multiple AI models through a single API. OpenRouter provides:
+
+- **Unified API**: Access 200+ AI models with one API key
+- **Flexible Pricing**: Pay only for what you use, choose models by cost/performance
+- **Model Fallbacks**: Automatic failover if a model is unavailable
+- **Rate Limiting**: Built-in rate limit management
+
+## Getting Started with OpenRouter
+
+<Steps>
+  <Step title="Create an Account">
+    Sign up at [openrouter.ai](https://openrouter.ai)
+  </Step>
+  <Step title="Generate API Key">
+    Navigate to [API Keys](https://openrouter.ai/keys) and create a new key
+  </Step>
+  <Step title="Add Credits (Optional)">
+    Free tier available, or add credits at [Billing](https://openrouter.ai/account/billing/overview) for higher rate limits
+  </Step>
+  <Step title="Use API Key">
+    Include your API key in the `config.api_key` parameter when processing documents
+  </Step>
+</Steps>
+
+### API Key Format
+
+OpenRouter API keys start with `sk-or-v1-`:
+
+```plaintext
+sk-or-v1-1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab
+```
+
+<Warning>
+  Keep your API key secure. Never commit it to version control or expose it in client-side code.
+</Warning>
+
+## Recommended AI Models
+
+The system supports all OpenRouter models, but these are optimized for tag generation:
+
+### Best for Speed and Cost
+
+<CardGroup cols={2}>
+  <Card title="OpenAI GPT-4o Mini" icon="bolt">
+    **Model ID**: `openai/gpt-4o-mini`
+    
+    **Best for**: General-purpose tagging, English documents
+    
+    **Speed**: Very fast (2-4 seconds)
+    
+    **Cost**: $0.15 per 1M input tokens
+    
+    **Strengths**:
+    - Excellent balance of speed and quality
+    - Low cost for high-volume processing
+    - Reliable and well-supported
+    
+    **Default model** - Recommended for most use cases
+  </Card>
+  
+  <Card title="Google Gemini Flash 1.5" icon="sparkles">
+    **Model ID**: `google/gemini-flash-1.5`
+    
+    **Best for**: Multilingual documents, Indian languages
+    
+    **Speed**: Very fast (2-3 seconds)
+    
+    **Cost**: $0.075 per 1M input tokens
+    
+    **Strengths**:
+    - Excellent with Hindi, Tamil, Telugu, and other Indian languages
+    - Fastest processing speed
+    - Lowest cost option
+    - Great for scanned/OCR documents
+  </Card>
+</CardGroup>
+
+### Best for Quality
+
+<CardGroup cols={2}>
+  <Card title="Anthropic Claude 3 Haiku" icon="star">
+    **Model ID**: `anthropic/claude-3-haiku`
+    
+    **Best for**: Complex documents, legal texts
+    
+    **Speed**: Fast (3-5 seconds)
+    
+    **Cost**: $0.25 per 1M input tokens
+    
+    **Strengths**:
+    - Highest quality tag generation
+    - Excellent understanding of context
+    - Great for technical/legal documents
+    - Superior at avoiding generic tags
+  </Card>
+  
+  <Card title="Anthropic Claude 3.5 Sonnet" icon="crown">
+    **Model ID**: `anthropic/claude-3.5-sonnet`
+    
+    **Best for**: Premium quality, complex analysis
+    
+    **Speed**: Medium (5-8 seconds)
+    
+    **Cost**: $3.00 per 1M input tokens
+    
+    **Strengths**:
+    - Best-in-class quality
+    - Deep contextual understanding
+    - Ideal for critical documents
+    - Most sophisticated tag selection
+  </Card>
+</CardGroup>
+
+## Model Configuration
+
+Specify the model in your processing configuration:
+
+<CodeGroup>
+```python Single Document
+import requests
+import json
+
+config = {
+    "api_key": "sk-or-v1-...",
+    "model_name": "google/gemini-flash-1.5",  # Choose your model
+    "num_pages": 3,
+    "num_tags": 8
+}
+
+files = {"pdf_file": open("document.pdf", "rb")}
+data = {"config": json.dumps(config)}
+headers = {"Authorization": f"Bearer {access_token}"}
+
+response = requests.post(
+    "http://localhost:8000/api/single/process",
+    files=files,
+    data=data,
+    headers=headers
+)
+```
+
+```python Batch Processing
+config = {
+    "api_key": "sk-or-v1-...",
+    "model_name": "openai/gpt-4o-mini",
+    "num_pages": 3,
+    "num_tags": 8
+}
+
+payload = {
+    "documents": documents,
+    "config": config
+}
+
+response = requests.post(
+    "http://localhost:8000/api/batch/start",
+    json=payload,
+    headers={"Authorization": f"Bearer {access_token}"}
+)
+```
+</CodeGroup>
+
+## Model Selection Guide
+
+Choose the right model based on your needs:
+
+<AccordionGroup>
+  <Accordion title="English Documents (General Purpose)">
+    **Recommended**: `openai/gpt-4o-mini`
+    
+    Best balance of speed, cost, and quality for English documents:
+    - Business reports
+    - Training manuals
+    - Policy documents
+    - General correspondence
+    
+    ```python
+    config = {
+        "model_name": "openai/gpt-4o-mini",
+        "num_pages": 3,
+        "num_tags": 8
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Indian Language Documents">
+    **Recommended**: `google/gemini-flash-1.5`
+    
+    Excellent support for Hindi, Tamil, Telugu, Bengali, and other Indian languages:
+    - Government documents in regional languages
+    - Multilingual reports
+    - OCR-extracted text from scanned documents
+    
+    ```python
+    config = {
+        "model_name": "google/gemini-flash-1.5",
+        "num_pages": 5,  # More pages for better context
+        "num_tags": 10
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Legal/Technical Documents">
+    **Recommended**: `anthropic/claude-3-haiku`
+    
+    Superior understanding of complex terminology and context:
+    - Legal contracts and agreements
+    - Technical specifications
+    - Research papers
+    - Regulatory documents
+    
+    ```python
+    config = {
+        "model_name": "anthropic/claude-3-haiku",
+        "num_pages": 5,
+        "num_tags": 12  # More tags for technical docs
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="High-Volume Processing">
+    **Recommended**: `google/gemini-flash-1.5`
+    
+    Lowest cost for processing thousands of documents:
+    - Batch processing large archives
+    - Daily automated processing
+    - Cost-sensitive deployments
+    
+    ```python
+    config = {
+        "model_name": "google/gemini-flash-1.5",
+        "num_pages": 2,  # Reduce pages to save costs
+        "num_tags": 6
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="Premium Quality Required">
+    **Recommended**: `anthropic/claude-3.5-sonnet`
+    
+    Best quality regardless of cost:
+    - Critical business documents
+    - Executive summaries
+    - High-stakes legal documents
+    - Knowledge base curation
+    
+    ```python
+    config = {
+        "model_name": "anthropic/claude-3.5-sonnet",
+        "num_pages": 10,
+        "num_tags": 15
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Unsupported Models
+
+Some models are **not compatible** with tag generation:
+
+<Warning>
+  The following model types do **NOT** work for tagging:
+  
+  - **Reasoning models**: `deepseek-r1`, `deepseek-reasoner`, `o1-preview`, `o1-mini`
+  - **Vision models**: `qwen-vl`, `qwen-2.5-vl`, image analysis models
+  
+  These models use different response formats incompatible with tag generation. Stick to chat/completion models.
+</Warning>
+
+## Rate Limits and Pricing
+
+### Free Tier
+
+OpenRouter provides a free tier with rate limits:
+
+- **Free credits**: Small amount for testing
+- **Rate limits**: 10-20 requests per minute (model-dependent)
+- **Best for**: Development, testing, small-scale use
+
+<Info>
+  If you hit rate limits frequently, the system automatically implements exponential backoff. Consider adding credits for production use.
+</Info>
+
+### Paid Tier
+
+Add credits for higher limits and better performance:
+
+<CardGroup cols={3}>
+  <Card title="Higher Rate Limits" icon="gauge-high">
+    100+ requests per minute depending on model
+  </Card>
+  <Card title="Pay-as-you-go" icon="credit-card">
+    Only pay for tokens used, no subscription
+  </Card>
+  <Card title="Priority Access" icon="rocket">
+    Faster processing during peak times
+  </Card>
+</CardGroup>
+
+### Cost Calculation
+
+Estimate costs based on your usage:
+
+```python Cost Estimator
+def estimate_cost(num_documents, pages_per_doc, avg_words_per_page, model="openai/gpt-4o-mini"):
+    """
+    Estimate OpenRouter API cost for batch processing
+    
+    Pricing (per 1M input tokens):
+    - gpt-4o-mini: $0.15
+    - gemini-flash-1.5: $0.075
+    - claude-3-haiku: $0.25
+    - claude-3.5-sonnet: $3.00
+    """
+    # Rough estimate: 750 words = 1000 tokens
+    tokens_per_doc = (pages_per_doc * avg_words_per_page) / 0.75
+    total_tokens = num_documents * tokens_per_doc
+    
+    # Model pricing per 1M tokens (input)
+    prices = {
+        "openai/gpt-4o-mini": 0.15,
+        "google/gemini-flash-1.5": 0.075,
+        "anthropic/claude-3-haiku": 0.25,
+        "anthropic/claude-3.5-sonnet": 3.00
+    }
+    
+    cost_per_million = prices.get(model, 0.15)
+    total_cost = (total_tokens / 1_000_000) * cost_per_million
+    
+    return {
+        "documents": num_documents,
+        "total_tokens": int(total_tokens),
+        "estimated_cost": round(total_cost, 4),
+        "cost_per_document": round(total_cost / num_documents, 6)
+    }
+
+# Example: 1000 documents, 3 pages each, 300 words/page
+estimate = estimate_cost(
+    num_documents=1000,
+    pages_per_doc=3,
+    avg_words_per_page=300,
+    model="openai/gpt-4o-mini"
+)
+
+print(f"Total cost: ${estimate['estimated_cost']}")
+print(f"Cost per document: ${estimate['cost_per_document']}")
+# Output:
+# Total cost: $0.18
+# Cost per document: $0.00018
+```
+
+## API Configuration
+
+The system uses these OpenRouter API settings:
+
+```python Backend Configuration
+# OpenRouter endpoint
+BASE_URL = "https://openrouter.ai/api/v1"
+
+# Timeouts
+CONNECT_TIMEOUT = 10  # seconds to establish connection
+READ_TIMEOUT = 120    # seconds to wait for response
+
+# Retry settings
+MAX_RETRIES = 3       # retry failed requests
+RETRY_DELAY = 2       # initial delay between retries
+
+# Rate limiting
+RETRY_DELAY_MULTIPLIER = 1.5  # exponential backoff
+MAX_DELAY_BETWEEN_REQUESTS = 120  # cap delay at 2 minutes
+```
+
+### Request Format
+
+The system sends requests in OpenAI-compatible format:
+
+```json OpenRouter Request
+{
+  "model": "openai/gpt-4o-mini",
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a document search-tagging expert..."
+    },
+    {
+      "role": "user",
+      "content": "Analyze the document below and return exactly 8 search tags..."
+    }
+  ],
+  "max_tokens": 700,
+  "temperature": 0.2
+}
+```
+
+## Error Handling
+
+<AccordionGroup>
+  <Accordion title="Invalid API Key">
+    **Error**: `"Invalid API key"`
+    
+    **Cause**: API key is incorrect or not from OpenRouter
+    
+    **Solution**: 
+    - Verify API key starts with `sk-or-v1-`
+    - Generate new key at [OpenRouter Keys](https://openrouter.ai/keys)
+    - Check for typos or extra spaces
+  </Accordion>
+
+  <Accordion title="Rate Limited">
+    **Error**: `"RATE_LIMITED: OpenRouter free tier limit hit"`
+    
+    **Cause**: Too many requests too quickly
+    
+    **Solution**: 
+    - System automatically implements backoff
+    - Add credits at [OpenRouter Billing](https://openrouter.ai/account/billing/overview)
+    - Reduce batch size or add delays between requests
+    
+    The system will retry automatically with exponential backoff.
+  </Accordion>
+
+  <Accordion title="Model Not Found">
+    **Error**: `"Model not found: incorrect-model-name"`
+    
+    **Cause**: Model ID is incorrect or model is unavailable
+    
+    **Solution**: 
+    - Check model ID at [OpenRouter Models](https://openrouter.ai/models)
+    - Ensure model is currently available
+    - Use exact model ID (case-sensitive)
+  </Accordion>
+
+  <Accordion title="Request Timeout">
+    **Error**: `"Request timed out"`
+    
+    **Cause**: Model is slow or API is congested
+    
+    **Solution**: 
+    - Reduce `num_pages` to decrease content size
+    - Try a faster model like `gemini-flash-1.5`
+    - System will retry automatically (up to 3 times)
+  </Accordion>
+
+  <Accordion title="Model Compatibility Warning">
+    **Warning**: `"Model 'deepseek-r1' is likely incompatible for tagging tasks"`
+    
+    **Cause**: Using a reasoning or vision model
+    
+    **Solution**: 
+    - Switch to a chat/completion model
+    - Use recommended models: `gpt-4o-mini`, `gemini-flash-1.5`, `claude-3-haiku`
+    - Reasoning models return empty/incompatible responses
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Start with GPT-4o Mini" icon="play">
+    Begin with `openai/gpt-4o-mini` for testing and general use. Upgrade to Claude for better quality or Gemini for multilingual.
+  </Card>
+  
+  <Card title="Optimize Page Count" icon="file-lines">
+    More pages = better context but higher cost. Start with 3 pages, adjust based on document complexity.
+  </Card>
+  
+  <Card title="Monitor API Usage" icon="chart-bar">
+    Track token usage and costs in [OpenRouter Dashboard](https://openrouter.ai/activity)
+  </Card>
+  
+  <Card title="Handle Rate Limits" icon="clock">
+    The system auto-retries with backoff. For high-volume, add credits or implement request queuing.
+  </Card>
+</CardGroup>
+
+## Model Comparison
+
+| Model | Speed | Cost (per 1M tokens) | Quality | Best For |
+|-------|-------|---------------------|---------|----------|
+| **gpt-4o-mini** | ⚡⚡⚡ Very Fast | $0.15 | ⭐⭐⭐⭐ Excellent | General purpose, English |
+| **gemini-flash-1.5** | ⚡⚡⚡ Very Fast | $0.075 | ⭐⭐⭐⭐ Excellent | Multilingual, high-volume |
+| **claude-3-haiku** | ⚡⚡ Fast | $0.25 | ⭐⭐⭐⭐⭐ Superior | Legal, technical docs |
+| **claude-3.5-sonnet** | ⚡ Medium | $3.00 | ⭐⭐⭐⭐⭐ Best | Premium quality, complex |
+
+<Tip>
+  For most users, **gpt-4o-mini** offers the best balance. Use **gemini-flash-1.5** for Indian languages or high-volume processing at lower cost.
+</Tip>

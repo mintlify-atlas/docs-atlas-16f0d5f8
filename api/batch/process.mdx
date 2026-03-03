@@ -1,0 +1,417 @@
+---
+title: 'Process Batch (Legacy)'
+description: 'Synchronous batch processing endpoint - legacy CSV upload'
+api: 'POST /api/batch/process'
+---
+
+<Warning>
+  **Legacy Endpoint:** This is the legacy synchronous batch processing endpoint. For real-time progress updates and better user experience, use the WebSocket endpoint at `/api/batch/ws/{job_id}` instead.
+</Warning>
+
+## Overview
+
+Processes a CSV file containing multiple documents synchronously. The request blocks until all documents are processed, then returns the complete results.
+
+**Limitations:**
+- No real-time progress updates
+- Long request timeout for large batches
+- No ability to pause/resume processing
+- No partial results on connection loss
+
+**Recommended Alternative:** Use POST /api/batch/start to create a job, then connect via WebSocket for real-time updates.
+
+## Authentication
+
+Requires authentication via Bearer token:
+
+```
+Authorization: Bearer your_access_token
+```
+
+## Request
+
+**Content-Type:** `multipart/form-data`
+
+<ParamField body="csv_file" type="file" required>
+  CSV file containing batch documents. Must have `.csv` extension.
+  
+  **Required columns:**
+  - `title` - Document title
+  - `file_source_type` - Source type: `url`, `s3`, or `local`
+  - `file_path` - Path or URL to the file
+  
+  **Optional columns:**
+  - `description` - Document description
+  - `publishing_date` - Publication date
+  - `file_size` - File size
+</ParamField>
+
+<ParamField body="config" type="string" required>
+  JSON string containing `TaggingConfig` object:
+  
+  <ParamField body="api_key" type="string" required>
+    OpenRouter API key for AI tag generation
+  </ParamField>
+  
+  <ParamField body="model_name" type="string">
+    AI model to use (default: `"openai/gpt-4o-mini"`)
+  </ParamField>
+  
+  <ParamField body="num_pages" type="integer">
+    Number of PDF pages to extract (1-10, default: 3)
+  </ParamField>
+  
+  <ParamField body="num_tags" type="integer">
+    Number of tags to generate (3-15, default: 8)
+  </ParamField>
+  
+  <ParamField body="exclusion_words" type="array">
+    List of words/phrases to exclude from tags
+  </ParamField>
+</ParamField>
+
+<ParamField body="exclusion_file" type="file">
+  Optional exclusion list file (`.txt` or `.pdf`)
+  
+  Contains words/phrases to exclude from generated tags:
+  - One term per line or comma-separated
+  - Comments: Lines starting with `#` are ignored
+  - Overrides `exclusion_words` in config if provided
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean">
+  Whether the batch processing completed successfully
+</ResponseField>
+
+<ResponseField name="total_documents" type="integer">
+  Total number of documents in the CSV
+</ResponseField>
+
+<ResponseField name="processed_count" type="integer">
+  Number of successfully processed documents
+</ResponseField>
+
+<ResponseField name="failed_count" type="integer">
+  Number of documents that failed processing
+</ResponseField>
+
+<ResponseField name="output_csv_url" type="string">
+  URL or path to the output CSV file with results
+</ResponseField>
+
+<ResponseField name="summary_report" type="object">
+  Detailed summary of processing results
+  
+  <ResponseField name="documents" type="array">
+    Array of document results with titles, tags, and status
+  </ResponseField>
+  
+  <ResponseField name="errors" type="array">
+    Array of error details for failed documents
+  </ResponseField>
+</ResponseField>
+
+<ResponseField name="processing_time" type="number">
+  Total processing time in seconds
+</ResponseField>
+
+### Example Response
+
+```json
+{
+  "success": true,
+  "total_documents": 10,
+  "processed_count": 9,
+  "failed_count": 1,
+  "output_csv_url": "https://storage.example.com/results/batch_20250115_123456.csv",
+  "summary_report": {
+    "documents": [
+      {
+        "title": "Training Manual",
+        "file_path": "https://example.com/doc1.pdf",
+        "success": true,
+        "tags": [
+          "employee-training",
+          "onboarding-procedures",
+          "workplace-safety",
+          "compliance-guidelines"
+        ],
+        "error": null
+      },
+      {
+        "title": "Annual Report",
+        "file_path": "https://example.com/doc2.pdf",
+        "success": false,
+        "tags": [],
+        "error": "Failed to download file: HTTP 404"
+      }
+    ],
+    "errors": [
+      {
+        "row": 2,
+        "title": "Annual Report",
+        "error": "Failed to download file: HTTP 404"
+      }
+    ]
+  },
+  "processing_time": 45.2
+}
+```
+
+## CSV Format
+
+See GET /api/batch/template for the complete CSV structure and examples.
+
+**Minimal Example:**
+
+```csv
+title,file_source_type,file_path
+"Document 1",url,https://example.com/doc1.pdf
+"Document 2",url,https://example.com/doc2.pdf
+```
+
+**Full Example:**
+
+```csv
+title,description,file_source_type,file_path,publishing_date,file_size
+"Training Manual","Employee onboarding guide",url,https://example.com/doc1.pdf,2025-01-15,1.2MB
+"Q4 Report","Financial results",s3,company-docs/q4-2024.pdf,2024-12-31,2.5MB
+```
+
+## Usage Example
+
+### cURL
+
+```bash
+curl -X POST "http://localhost:8000/api/batch/process" \
+  -H "Authorization: Bearer your_access_token" \
+  -F "csv_file=@batch_documents.csv" \
+  -F 'config={
+    "api_key": "your_openrouter_key",
+    "model_name": "openai/gpt-4o-mini",
+    "num_pages": 3,
+    "num_tags": 8
+  }' \
+  -F "exclusion_file=@exclusion_list.txt"
+```
+
+### JavaScript/TypeScript
+
+```typescript
+interface TaggingConfig {
+  api_key: string;
+  model_name?: string;
+  num_pages?: number;
+  num_tags?: number;
+  exclusion_words?: string[];
+}
+
+interface BatchProcessResponse {
+  success: boolean;
+  total_documents: number;
+  processed_count: number;
+  failed_count: number;
+  output_csv_url: string;
+  summary_report: {
+    documents: Array<{
+      title: string;
+      file_path: string;
+      success: boolean;
+      tags: string[];
+      error: string | null;
+    }>;
+    errors: Array<{
+      row: number;
+      title: string;
+      error: string;
+    }>;
+  };
+  processing_time: number;
+}
+
+async function processBatchCSV(
+  csvFile: File,
+  config: TaggingConfig,
+  exclusionFile?: File,
+  token: string
+): Promise<BatchProcessResponse> {
+  const formData = new FormData();
+  formData.append('csv_file', csvFile);
+  formData.append('config', JSON.stringify(config));
+  
+  if (exclusionFile) {
+    formData.append('exclusion_file', exclusionFile);
+  }
+  
+  const response = await fetch('http://localhost:8000/api/batch/process', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    body: formData,
+  });
+  
+  if (!response.ok) {
+    throw new Error(`Batch processing failed: ${response.statusText}`);
+  }
+  
+  return response.json();
+}
+
+// Usage
+const csvFile = document.getElementById('csv-input').files[0];
+const result = await processBatchCSV(
+  csvFile,
+  {
+    api_key: 'your_openrouter_key',
+    model_name: 'openai/gpt-4o-mini',
+    num_pages: 3,
+    num_tags: 8,
+  },
+  undefined,
+  'your_access_token'
+);
+
+console.log(`Processed ${result.processed_count}/${result.total_documents} documents`);
+console.log(`Processing time: ${result.processing_time}s`);
+```
+
+### Python
+
+```python
+import requests
+from typing import Dict, Optional
+
+def process_batch_csv(
+    csv_path: str,
+    config: Dict,
+    token: str,
+    exclusion_file_path: Optional[str] = None,
+    base_url: str = "http://localhost:8000"
+) -> Dict:
+    files = {
+        'csv_file': open(csv_path, 'rb'),
+    }
+    
+    if exclusion_file_path:
+        files['exclusion_file'] = open(exclusion_file_path, 'rb')
+    
+    data = {
+        'config': json.dumps(config)
+    }
+    
+    try:
+        response = requests.post(
+            f"{base_url}/api/batch/process",
+            headers={"Authorization": f"Bearer {token}"},
+            files=files,
+            data=data,
+            timeout=600  # 10 minute timeout for large batches
+        )
+        response.raise_for_status()
+        return response.json()
+    finally:
+        for f in files.values():
+            f.close()
+
+# Usage
+config = {
+    "api_key": "your_openrouter_key",
+    "model_name": "openai/gpt-4o-mini",
+    "num_pages": 3,
+    "num_tags": 8,
+}
+
+result = process_batch_csv(
+    csv_path="batch_documents.csv",
+    config=config,
+    token="your_access_token",
+    exclusion_file_path="exclusion_list.txt"
+)
+
+print(f"Success: {result['success']}")
+print(f"Processed: {result['processed_count']}/{result['total_documents']}")
+print(f"Failed: {result['failed_count']}")
+print(f"Time: {result['processing_time']}s")
+print(f"Output: {result['output_csv_url']}")
+```
+
+## Error Responses
+
+### Invalid File Type
+
+```json
+{
+  "detail": "Invalid file type"
+}
+```
+
+**Status Code:** 400
+
+### Empty CSV File
+
+```json
+{
+  "detail": "Empty CSV file"
+}
+```
+
+**Status Code:** 400
+
+### Invalid Config JSON
+
+```json
+{
+  "detail": "Invalid config JSON format"
+}
+```
+
+**Status Code:** 400
+
+### Exclusion File Parse Error
+
+```json
+{
+  "detail": "Failed to parse exclusion file: [error details]"
+}
+```
+
+**Status Code:** 400
+
+### Internal Server Error
+
+```json
+{
+  "detail": "Internal server error: [error details]"
+}
+```
+
+**Status Code:** 500
+
+## Migration to WebSocket Endpoint
+
+<Note>
+  For new implementations, use the WebSocket-based workflow instead:
+  
+  1. POST /api/batch/start - Start the job
+  2. WebSocket /api/batch/ws/{job_id} - Get real-time updates
+  3. POST /api/batch/jobs/{job_id}/cancel - Cancel if needed
+  
+  This provides better user experience with progress tracking and the ability to disconnect/reconnect without losing the job.
+</Note>
+
+## Performance Considerations
+
+<Warning>
+  **Timeout Risk:** Large batches may exceed request timeout limits. The WebSocket endpoint is recommended for batches with more than 10 documents.
+</Warning>
+
+<Info>
+  **Blocking Request:** This endpoint blocks until all documents are processed. The client must maintain the connection for the entire duration.
+</Info>
+
+<Tip>
+  **Rate Limiting:** OpenRouter API rate limits apply. Large batches may encounter rate limit errors. The WebSocket endpoint handles rate limiting more gracefully with retry logic.
+</Tip>

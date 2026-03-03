@@ -1,0 +1,469 @@
+---
+title: 'CSV Format for Batch Processing'
+description: 'Complete guide to the CSV format required for batch document processing'
+icon: 'table'
+---
+
+Learn how to structure CSV files for batch processing, including required columns, file source types, and formatting best practices.
+
+## CSV Structure
+
+The batch processing system accepts CSV files with metadata for multiple documents. Each row represents one document to process.
+
+### Required Columns
+
+<ParamField path="title" type="string" required>
+  **Document title**
+  
+  The name or title of the document. This is used for identification and appears in processing results.
+  
+  Example: `"Training Manual 2024"`, `"Annual Report FY2023-24"`
+</ParamField>
+
+<ParamField path="file_source_type" type="enum" required>
+  **Source type of the file**
+  
+  Specifies where the document is located. Must be one of:
+  - `url` - Public HTTP/HTTPS URL
+  - `s3` - Amazon S3 bucket (requires AWS credentials)
+  - `local` - Local file path on server
+  
+  Example: `url`, `s3`, `local`
+</ParamField>
+
+<ParamField path="file_path" type="string" required>
+  **Path or URL to the PDF file**
+  
+  The location of the PDF document. Format depends on `file_source_type`:
+  - **URL**: `https://example.com/document.pdf`
+  - **S3**: `s3://bucket-name/path/to/file.pdf`
+  - **Local**: `/absolute/path/to/file.pdf`
+  
+  Example: `"https://socialjustice.gov.in/writereaddata/UploadFile/66991763713697.pdf"`
+</ParamField>
+
+### Optional Columns
+
+<ParamField path="description" type="string" optional>
+  **Document description**
+  
+  Additional context about the document. This helps the AI generate more relevant tags.
+  
+  Example: `"Comprehensive training document for new employees covering organizational policies and procedures"`
+</ParamField>
+
+<ParamField path="publishing_date" type="string" optional>
+  **Publication date**
+  
+  When the document was published or last updated. Format: `YYYY-MM-DD` or any standard date format.
+  
+  Example: `"2025-01-15"`, `"2024-12-31"`
+</ParamField>
+
+<ParamField path="file_size" type="string" optional>
+  **File size**
+  
+  Size of the PDF file. This is informational only.
+  
+  Example: `"1.2MB"`, `"2.5MB"`, `"450KB"`
+</ParamField>
+
+## CSV Template
+
+Download a template with sample data:
+
+<CodeGroup>
+```csv Template
+title,description,file_source_type,file_path,publishing_date,file_size
+"Training Manual","PMSPECIAL training document",url,https://example.com/doc1.pdf,2025-01-15,1.2MB
+"Annual Report 2024","Financial report",url,https://example.com/doc2.pdf,2024-12-31,2.5MB
+```
+
+```python Download Template
+import requests
+
+url = "http://localhost:8000/api/batch/template"
+headers = {"Authorization": f"Bearer {access_token}"}
+
+response = requests.get(url, headers=headers)
+template_data = response.json()
+
+print("Template CSV:")
+print(template_data['template'])
+
+# Save to file
+with open('batch_template.csv', 'w') as f:
+    f.write(template_data['template'])
+```
+</CodeGroup>
+
+### API Response
+
+```json Template API Response
+{
+  "template": "title,description,file_source_type,file_path,publishing_date,file_size\n\"Training Manual\",\"PMSPECIAL training document\",url,https://example.com/doc1.pdf,2025-01-15,1.2MB\n...",
+  "columns": [
+    {
+      "name": "title",
+      "required": true,
+      "description": "Document title"
+    },
+    {
+      "name": "description",
+      "required": false,
+      "description": "Document description"
+    },
+    {
+      "name": "file_source_type",
+      "required": true,
+      "description": "Source type: url, s3, or local"
+    },
+    {
+      "name": "file_path",
+      "required": true,
+      "description": "Path or URL to the file"
+    },
+    {
+      "name": "publishing_date",
+      "required": false,
+      "description": "Publication date"
+    },
+    {
+      "name": "file_size",
+      "required": false,
+      "description": "File size"
+    }
+  ]
+}
+```
+
+## File Source Types
+
+### URL Sources
+
+Process documents from public HTTP/HTTPS URLs.
+
+<CodeGroup>
+```csv URL Examples
+title,file_source_type,file_path
+"CloudFront Document",url,https://d1581jr3fp95xu.cloudfront.net/path/to/file.pdf
+"Government Portal",url,https://socialjustice.gov.in/writereaddata/UploadFile/66991763713697.pdf
+"S3 Public URL",url,https://my-bucket.s3.ap-south-1.amazonaws.com/document.pdf
+"Direct Link",url,https://example.com/reports/annual-2024.pdf
+```
+</CodeGroup>
+
+**Requirements:**
+- URL must start with `http://` or `https://`
+- Document must be publicly accessible (no authentication)
+- File size limit: 50MB
+- Download timeout: 60 seconds
+
+**Supported URL Types:**
+- Direct PDF URLs
+- CloudFront CDN URLs
+- S3 public bucket URLs
+- Government/institutional portals
+- Any publicly accessible HTTP/HTTPS endpoint
+
+### S3 Sources
+
+Process documents from private S3 buckets (requires AWS credentials).
+
+<CodeGroup>
+```csv S3 Examples
+title,file_source_type,file_path
+"Private Document",s3,s3://my-private-bucket/documents/report.pdf
+"Archived Report",s3,s3://archive-bucket/2024/annual-report.pdf
+"Training Material",s3,my-bucket/training/manual.pdf
+```
+</CodeGroup>
+
+**Path Formats:**
+- Full S3 URI: `s3://bucket-name/path/to/file.pdf`
+- Short format: `bucket-name/path/to/file.pdf`
+
+**AWS Configuration:**
+
+The backend must be configured with AWS credentials:
+
+```bash Environment Variables
+AWS_ACCESS_KEY_ID=your-access-key-id
+AWS_SECRET_ACCESS_KEY=your-secret-access-key
+AWS_DEFAULT_REGION=ap-south-1
+```
+
+<Warning>
+  S3 processing requires valid AWS credentials configured on the server. Public S3 URLs can be processed as `url` type instead.
+</Warning>
+
+### Local Sources
+
+Process documents from the server's local file system.
+
+<CodeGroup>
+```csv Local Examples
+title,file_source_type,file_path
+"Server Document",local,/opt/documents/report.pdf
+"Shared Storage",local,/mnt/shared/pdfs/manual.pdf
+"Archive File",local,/data/archive/2024/report.pdf
+```
+</CodeGroup>
+
+**Requirements:**
+- Paths must be absolute (start with `/`)
+- File must exist and be readable by the application
+- No relative paths supported
+- Server must have read permissions
+
+<Note>
+  Local file processing is typically used for documents already uploaded to the server or available on network-mounted storage.
+</Note>
+
+## Complete CSV Examples
+
+### Minimal Example (Required Columns Only)
+
+```csv Minimal CSV
+title,file_source_type,file_path
+"Training Manual",url,https://example.com/training.pdf
+"Annual Report 2024",url,https://example.com/annual-2024.pdf
+"Policy Document",url,https://example.com/policy.pdf
+```
+
+### Complete Example (All Columns)
+
+```csv Complete CSV
+title,description,file_source_type,file_path,publishing_date,file_size
+"NSFDC Training Manual","Comprehensive training document for NSFDC schemes and procedures",url,https://socialjustice.gov.in/writereaddata/UploadFile/66991763713697.pdf,2024-03-15,2.4MB
+"Annual Report FY2023-24","Financial and operational report for fiscal year 2023-2024",url,https://example.com/reports/annual-2024.pdf,2024-04-01,3.1MB
+"Employee Handbook","Standard operating procedures and organizational policies",s3,s3://company-docs/hr/handbook.pdf,2024-01-10,1.8MB
+"Scheme Guidelines","Detailed guidelines for beneficiary eligibility and application process",url,https://portal.gov.in/schemes/guidelines.pdf,2024-02-20,950KB
+```
+
+### Mixed Source Types
+
+```csv Mixed Sources
+title,description,file_source_type,file_path,publishing_date
+"Public Report","Annual report from website",url,https://example.com/report.pdf,2024-12-31
+"Archive Document","Archived policy document",s3,s3://archive/policies/2024.pdf,2024-06-15
+"Server File","Local training material",local,/opt/documents/training.pdf,2024-01-01
+```
+
+## CSV Formatting Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Quotes for Text Fields">
+    Always wrap text fields containing commas, quotes, or newlines in double quotes:
+    
+    ```csv
+    "Training Manual, Version 2","Document for new employees",url,https://example.com/doc.pdf
+    ```
+    
+    **Escape internal quotes** by doubling them:
+    ```csv
+    "Employee ""Best Practices"" Guide","Comprehensive guide",url,https://example.com/guide.pdf
+    ```
+  </Accordion>
+
+  <Accordion title="Include Header Row">
+    Always include column headers as the first row:
+    
+    ```csv
+    title,description,file_source_type,file_path
+    "Document 1","Description",url,https://example.com/doc1.pdf
+    ```
+    
+    Do not skip the header row or the system won't parse correctly.
+  </Accordion>
+
+  <Accordion title="Use UTF-8 Encoding">
+    Save your CSV file with UTF-8 encoding to support international characters:
+    
+    ```csv
+    title,description,file_source_type,file_path
+    "वार्षिक रिपोर्ट 2024","हिंदी में रिपोर्ट",url,https://example.com/report-hi.pdf
+    "தமிழ் கையேடு","Tamil training manual",url,https://example.com/tamil.pdf
+    ```
+  </Accordion>
+
+  <Accordion title="One Document Per Row">
+    Each row represents exactly one document to process:
+    
+    ✅ **Correct:**
+    ```csv
+    title,file_source_type,file_path
+    "Document 1",url,https://example.com/doc1.pdf
+    "Document 2",url,https://example.com/doc2.pdf
+    ```
+    
+    ❌ **Incorrect:**
+    ```csv
+    title,file_source_type,file_path
+    "Document 1; Document 2",url,https://example.com/doc1.pdf; https://example.com/doc2.pdf
+    ```
+  </Accordion>
+
+  <Accordion title="Validate URLs Before Upload">
+    Ensure all URLs are accessible before batch processing:
+    
+    ```python
+    import requests
+    
+    def validate_url(url):
+        try:
+            response = requests.head(url, timeout=10)
+            return response.status_code == 200
+        except:
+            return False
+    
+    # Check before adding to CSV
+    if validate_url("https://example.com/doc.pdf"):
+        print("URL is valid")
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Column Mapping
+
+If your CSV uses different column names, you can provide a mapping:
+
+```python Custom Column Mapping
+import requests
+import json
+
+url = "http://localhost:8000/api/batch/start"
+
+# Your CSV has columns: doc_name, source, location
+# Map them to system fields
+column_mapping = {
+    "title": "doc_name",
+    "file_source_type": "source",
+    "file_path": "location"
+}
+
+payload = {
+    "documents": documents,
+    "config": config,
+    "column_mapping": column_mapping
+}
+
+headers = {"Authorization": f"Bearer {access_token}"}
+response = requests.post(url, json=payload, headers=headers)
+```
+
+## Pre-flight Validation
+
+Validate file paths before starting batch processing:
+
+```python Validate CSV Paths
+import csv
+import requests
+
+def validate_csv_paths(csv_file_path, access_token):
+    """Validate all file paths in CSV before processing"""
+    
+    # Read CSV and extract paths
+    paths = []
+    with open(csv_file_path, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            paths.append({
+                "path": row['file_path'],
+                "type": row['file_source_type']
+            })
+    
+    # Validate all paths
+    url = "http://localhost:8000/api/batch/validate-paths"
+    headers = {"Authorization": f"Bearer {access_token}"}
+    payload = {"paths": paths}
+    
+    response = requests.post(url, json=payload, headers=headers)
+    results = response.json()
+    
+    # Report validation results
+    print(f"Validation Results:")
+    print(f"Valid: {results['valid_count']}")
+    print(f"Invalid: {results['invalid_count']}")
+    
+    for result in results['results']:
+        if not result['valid']:
+            print(f"  ✗ {result['path']}: {result['error']}")
+    
+    return results['invalid_count'] == 0
+
+# Usage
+if validate_csv_paths('batch.csv', access_token):
+    print("All paths valid, proceeding with batch processing")
+else:
+    print("Some paths invalid, please fix and retry")
+```
+
+## Common Errors
+
+<AccordionGroup>
+  <Accordion title="Empty CSV file">
+    **Error**: `"Empty CSV file"`
+    
+    **Cause**: CSV file has no rows or only header row
+    
+    **Solution**: Ensure CSV has at least one data row after the header
+  </Accordion>
+
+  <Accordion title="Missing required columns">
+    **Error**: `"Missing required column: title"`
+    
+    **Cause**: CSV is missing one of the required columns
+    
+    **Solution**: Ensure CSV includes `title`, `file_source_type`, and `file_path` columns
+  </Accordion>
+
+  <Accordion title="Invalid file source type">
+    **Error**: `"Invalid file_source_type: 'http'"`
+    
+    **Cause**: `file_source_type` must be exactly `url`, `s3`, or `local`
+    
+    **Solution**: Use only the allowed values (case-sensitive)
+  </Accordion>
+
+  <Accordion title="URL validation failed">
+    **Error**: `"HTTP 404" or "Request timed out"`
+    
+    **Cause**: URL is inaccessible or returns error
+    
+    **Solution**: 
+    - Verify URL is correct and publicly accessible
+    - Check if URL requires authentication (not supported)
+    - Ensure URL starts with `http://` or `https://`
+  </Accordion>
+
+  <Accordion title="S3 client not configured">
+    **Error**: `"S3 client not configured"`
+    
+    **Cause**: AWS credentials not configured on server
+    
+    **Solution**: 
+    - Configure AWS credentials on the server
+    - Or use public S3 URLs with `file_source_type: url`
+  </Accordion>
+</AccordionGroup>
+
+## Performance Tips
+
+<CardGroup cols={2}>
+  <Card title="Batch Size" icon="layer-group">
+    Process 50-100 documents per batch for optimal performance. Larger batches may timeout.
+  </Card>
+  
+  <Card title="Use URL Sources" icon="link">
+    URL sources are fastest as documents are downloaded on-demand. Local/S3 require additional I/O.
+  </Card>
+  
+  <Card title="Validate First" icon="check">
+    Always run path validation before batch processing to catch errors early and save API costs.
+  </Card>
+  
+  <Card title="Monitor Progress" icon="chart-line">
+    Connect to WebSocket for real-time progress. You can pause/resume or cancel jobs if needed.
+  </Card>
+</CardGroup>
