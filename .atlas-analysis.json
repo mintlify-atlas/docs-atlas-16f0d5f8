@@ -1,0 +1,118 @@
+{
+  "projectType": "saas",
+  "projectName": "Meta-Data Tag Generator",
+  "projectDescription": "AI-powered document metadata tagging system with OCR support and batch processing capabilities",
+  "theme": "palm",
+  "primaryColor": "#3B82F6",
+  "lightColor": "#60A5FA",
+  "darkColor": "#1E40AF",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/single-document",
+              "features/batch-processing",
+              "features/ocr-support",
+              "features/exclusion-lists",
+              "features/url-processing"
+            ]
+          },
+          {
+            "group": "User Guides",
+            "pages": [
+              "guides/authentication",
+              "guides/processing-workflow",
+              "guides/csv-format",
+              "guides/ai-models"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/docker-compose",
+              "deployment/environment-variables",
+              "deployment/architecture"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview",
+              "api/authentication"
+            ]
+          },
+          {
+            "group": "Single Document",
+            "pages": [
+              "api/single/process",
+              "api/single/preview"
+            ]
+          },
+          {
+            "group": "Batch Processing",
+            "pages": [
+              "api/batch/websocket",
+              "api/batch/validate",
+              "api/batch/template",
+              "api/batch/process"
+            ]
+          },
+          {
+            "group": "User Management",
+            "pages": [
+              "api/auth/register",
+              "api/auth/login",
+              "api/auth/tokens"
+            ]
+          },
+          {
+            "group": "Status & Health",
+            "pages": [
+              "api/health"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "AI-powered metadata tag generation using OpenRouter API",
+    "Hybrid OCR system (Tesseract + EasyOCR) for scanned documents",
+    "Real-time batch processing with WebSocket progress updates",
+    "Support for 80+ languages including all Indian languages",
+    "Exclusion list filtering for improved tag specificity",
+    "URL-based document processing (CloudFront, S3, public URLs)",
+    "User authentication and document history tracking",
+    "CSV import/export with customizable column mapping"
+  ],
+  "publicApiSurface": [
+    "POST /api/single/process - Process single PDF document",
+    "GET /api/single/preview - Preview PDF from URL",
+    "WebSocket /api/batch/ws/{job_id} - Real-time batch processing",
+    "POST /api/batch/validate-paths - Validate file paths",
+    "POST /api/batch/process - Legacy batch processing",
+    "GET /api/batch/template - Get CSV template",
+    "POST /api/auth/register - User registration",
+    "POST /api/auth/login - User authentication",
+    "POST /api/auth/refresh - Refresh access token",
+    "GET /api/auth/me - Get current user",
+    "GET /api/health - Health check endpoint"
+  ]
+}
